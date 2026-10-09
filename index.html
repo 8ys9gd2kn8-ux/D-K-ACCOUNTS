@@ -176,7 +176,7 @@ async function apView(id){const a=S.apps.find(x=>x.id==id),r=await apFile(a),sp=
 function show(){try{show0()}catch(e){try{$('#app').innerHTML=`<div class="card"><h3>Something went wrong</h3><p class="mut">${esc((e&&e.message)||e)}</p><button onclick="tab='home';show()">Go to Home</button></div>`}catch(x){}}}
 if(window.addEventListener){window.addEventListener('error',e=>{try{toast('Error: '+(e.message||'unknown'))}catch(x){}});window.addEventListener('unhandledrejection',e=>{try{toast('Error: '+((e.reason&&e.reason.message)||'unknown'))}catch(x){}})}
 function show0(){pendRender=false;if(RO&&tab=='add')tab='home';hdr();document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==tab));
- $('#app').innerHTML=({home,add,ledger,debts,stock,approvals,partners,reports})[tab]();window.scrollTo(0,0);if(tab=='reports'&&rep.saved)refreshSaved()}
+ $('#app').innerHTML=({home,add,ledger,debts,stock,approvals,partners,reports})[tab]();window.scrollTo(0,0);lockRO();if(tab=='reports'&&rep.saved)refreshSaved()}
 const IC={home:'<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',add:'<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',ledger:'<path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h4"/>',debts:'<path d="M3 7h18v12H3zM3 11h18M7 15h3"/>',approvals:'<path d="M9 4h6v3H9zM9 5.5H6V21h12V5.5h-3"/><path d="M9 14l2 2 4-4"/>',stock:'<path d="M3 8l9-5 9 5v9l-9 5-9-5zM3 8l9 5 9-5M12 13v9"/>',partners:'<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6M17 11a3 3 0 1 0 0-6M21 20c0-2.7-1.6-4.7-4-5.6"/>',reports:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'};
 function buildNav(){$('#nv').style.display='flex';$('#nv').innerHTML=[['home','Home'],['add','Add'],['ledger','Ledger'],['debts','Debts'],['stock','Stock'],['approvals','Funding'],['partners','Partners'],['reports','Reports']].filter(t=>!(RO&&t[0]=='add')).map(t=>`<button data-t="${t[0]}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${IC[t[0]]}</svg>${t[1]}</button>`).join('');
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;show()})}
@@ -312,7 +312,7 @@ function partners(){const p=profit('','');const tr=sum(S.partners.map(x=>+x.rati
  <button class="p" onclick="addP()">Add a partner</button>
  <p class="mut">Salaries are paid out of profit before it is shared. They count monthly from the first entry (or the report start date). Record each payment with Add → Salary paid. When a new partner joins, change everyone’s share % so the total is 100%.</p>
  <h2>Accounts &amp; data</h2><div class="seg"><button onclick="ex()">Download backup</button><button onclick="document.getElementById('imp').click()">Restore backup</button></div>
- <input id="imp" type="file" accept=".json" style="display:none" onchange="im(this)"><h2>Your account</h2><div class="card"><div>${esc(ME)}</div><div class="mut">${RO?'View-only access: you can look at everything and print reports.':'Full access'}</div><div class="seg" style="margin-top:10px"><button onclick="chgPw()">Change password</button><button onclick="signOut()">Sign out</button></div></div>`}
+ <input id="imp" type="file" accept=".json" style="display:none" onchange="im(this)"><h2>Your account</h2><div class="card"><div>${esc(ME)}</div><div class="mut">${RO?'View-only access: you can look at everything and print reports. You cannot add, change or delete anything.':'Full access'}</div><div class="seg" style="margin-top:10px"><button onclick="chgPw()">Change password</button><button onclick="signOut()">Sign out</button></div></div>`}
 function askText(t,v,ty){return new Promise(r=>{const d=document.createElement('div');d.className='ov';d.innerHTML=`<div class="mod"><h3 style="margin-top:0">${esc(t)}</h3><input id="mi" type="${ty||'text'}" ${ty=='number'?'inputmode="decimal" step="any"':''} value="${esc(v??'')}"><div class="seg" style="margin-top:12px"><button id="mc">Cancel</button><button class="on" id="mk">OK</button></div></div>`;document.body.appendChild(d);const e=x=>{d.remove();r(x)},i=d.querySelector('#mi');d.querySelector('#mc').onclick=()=>e(null);d.querySelector('#mk').onclick=()=>e(i.value);i.onkeydown=ev=>{if(ev.key=='Enter')e(i.value)};i.focus()})}
 function askYes(m){return new Promise(r=>{const d=document.createElement('div');d.className='ov';d.innerHTML=`<div class="mod"><p style="margin-top:0">${esc(m)}</p><div class="seg"><button id="mc">Cancel</button><button class="on" id="mk">Yes</button></div></div>`;document.body.appendChild(d);d.querySelector('#mc').onclick=()=>{d.remove();r(false)};d.querySelector('#mk').onclick=()=>{d.remove();r(true)}})}
 function toast(m){const d=document.createElement('div');d.className='toast';d.textContent=m;document.body.appendChild(d);setTimeout(()=>d.remove(),3500)}
@@ -390,8 +390,8 @@ async function exportReports(fmt){const m=$('#exmsg'),sel=RK.filter(k=>rep.sel[k
  const to=rep.to,per=(one?ms[0].period:(rep.from?'For the period '+dt(rep.from)+' to '+dt(to):'Up to '+dt(to))).toUpperCase(),lg=await logoPng();
  const fn=(one?ms[0].name.replace(/[^A-Za-z]+/g,'_'):'Financial_Reports')+'_'+to+'.'+fmt;
  const blob=fmt=='docx'?await mkDocx(ms,one,title,per,lg):await mkPdf(ms,one,title,per,lg);
- if(fmt=='pdf'){const ok=await savePdf({fn,title,per,ms,blob});if(!ok)toast('The PDF could not be saved in the app, but you can still download it.')}
- await dl.save({filename:fn,data:blob});m.textContent='Done: '+fn+(fmt=='pdf'?' (a copy is saved below)':'');if(fmt=='pdf'){rep.saved=true;refreshSaved()}}catch(e){m.textContent=e&&e.code=='declined'?'Download cancelled.'+(fmt=='pdf'?' Your copy is saved below.':''):'Export failed: '+(e.message||e.code||e)}}
+ if(fmt=='pdf'&&!RO){const ok=await savePdf({fn,title,per,ms,blob});if(!ok)toast('The PDF could not be saved in the app, but you can still download it.')}
+ await dl.save({filename:fn,data:blob});m.textContent='Done: '+fn+(fmt=='pdf'&&!RO?' (a copy is saved below)':'');if(fmt=='pdf'){rep.saved=true;refreshSaved()}}catch(e){m.textContent=e&&e.code=='declined'?'Download cancelled.'+(fmt=='pdf'?' Your copy is saved below.':''):'Export failed: '+(e.message||e.code||e)}}
 async function mkDocx(ms,one,title,per,lg){await lib('https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js');const D=docx,F='Times New Roman';
  const tx=(t,o={})=>new D.TextRun({text:t,font:F,size:22,...o}),ctr=D.AlignmentType.CENTER,nb={style:D.BorderStyle.NONE,size:0,color:'FFFFFF'},ln={style:D.BorderStyle.SINGLE,size:6,color:'000000'};
  const ch=[new D.Paragraph({alignment:ctr,spacing:{after:160},children:[new D.ImageRun({data:u8(lg),type:'png',transformation:{width:128,height:128}})]}),
@@ -472,18 +472,25 @@ function save(){if(RO||!SYNC)return;dirty=true;setStatus('Saving…');clearTimeo
 window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue=''}});
 function schedRender(){clearTimeout(rtmr);rtmr=setTimeout(()=>{const a=document.activeElement;if(tab=='add'||(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName))||document.querySelector('.ov')){pendRender=true;return}show()},350)}
 document.addEventListener('focusout',()=>{if(pendRender)setTimeout(()=>{const a=document.activeElement;if(tab!='add'&&!(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName))&&!document.querySelector('.ov')){pendRender=false;show()}},400)});
-function onRT(p){try{const del=p.eventType=='DELETE',r=del?p.old:p.new;if(!r||!r.kind)return;
+function onRT(p){if(RO){reloadRO();return}try{const del=p.eventType=='DELETE',r=del?p.old:p.new;if(!r||!r.kind)return;
  if(!del){const k=r.kind+SEP+r.id,c=toRows()[k];if(c&&canon(c.data)==canon(strip(r.data)))return}
  applyRow(r,del);S.partners.sort((a,b)=>a.id-b.id);fixS();schedRender()}catch(e){}}
-async function resync(){if(!SYNC||flushing||dirty)return;try{const rows=await loadAll(),seen=new Set();let ch=false;
+async function resync(){if(!SYNC||flushing||dirty)return;if(RO){reloadRO();return}try{const rows=await loadAll(),seen=new Set();let ch=false;
  rows.forEach(r=>{const k=r.kind+SEP+r.id;seen.add(k);if(BASE[k]!==canon(strip(r.data))){applyRow(r);ch=true}});
  Object.keys(BASE).forEach(k=>{if(!seen.has(k)){const p=k.split(SEP);applyRow({kind:p[0],id:p[1]},true);ch=true}});
  if(ch){S.partners.sort((a,b)=>a.id-b.id);fixS();schedRender()}}catch(e){}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState=='visible')resync()});
 function subscribe(){try{sb.channel('records-live').on('postgres_changes',{event:'*',schema:'public',table:'records'},onRT).subscribe(s=>{if(s=='SUBSCRIBED')setStatus(dirty?'Saving…':'Live')})}catch(e){}}
+/* view-only: three layers (hidden controls, frozen data, blocked clicks); the database refuses writes as well */
+const OKRE=/^(openLoan=|apFilter=|rep\.|togSup\(|togCust\(|apView\(|svView\(|svDl\(|exportReports\(|refreshSaved\(|ex\(|chgPw\(|signOut\()/;
+function deepFreeze(o){if(o&&typeof o=='object'&&!Object.isFrozen(o)){Object.freeze(o);Object.values(o).forEach(deepFreeze)}return o}
+function lockRO(){if(!RO)return;try{document.querySelectorAll('#app button').forEach(b=>{const oc=b.getAttribute('onclick');if(oc&&!OKRE.test(oc.trim()))b.style.display='none'});
+ document.querySelectorAll('#app input,#app select,#app textarea').forEach(x=>{if(!/^rep\./.test((x.getAttribute('onchange')||'').trim()))x.disabled=true})}catch(e){}}
+let rotmr=null;
+function reloadRO(){clearTimeout(rotmr);rotmr=setTimeout(async()=>{try{const rows=await loadAll();S=dflt();S.partners=[];BASE={};rows.forEach(r=>applyRow(r));S.partners.sort((a,b)=>a.id-b.id);fixS();deepFreeze(S);schedRender()}catch(e){}},600)}
 /* view-only guard */
 document.addEventListener('click',e=>{if(!RO)return;const b=e.target.closest&&e.target.closest('button');if(!b||b.dataset.t)return;const oc=b.getAttribute('onclick');if(!oc)return;
- if(/^(openLoan=|apFilter=|rep\.|togSup\(|togCust\(|apView\(|svView\(|svDl\(|exportReports\(|refreshSaved\(|ex\(|chgPw\(|signOut\()/.test(oc.trim()))return;
+ if(OKRE.test(oc.trim()))return;
  e.stopPropagation();e.preventDefault();toast('View-only access: you can look and print reports, but not change anything.')},true);
 /* sign-in */
 const loadingCard=t=>`<div class="card"><p class="mut" style="margin:0">${esc(t)}</p></div>`;
@@ -497,7 +504,7 @@ function bootFail(m){$('#nv').style.display='none';$('#app').innerHTML=`<div cla
 function noAccess(){$('#nv').style.display='none';$('#app').innerHTML=`<div class="card"><h3>No access</h3><p class="mut">${esc(ME)} is signed in but has not been set up as a partner. Ask a full partner to add you.</p><button class="p" onclick="signOut()">Sign out</button></div>`}
 async function startSession(session){ME=(session.user.email||'').toLowerCase();$('#app').innerHTML=loadingCard('Opening the books…');
  try{const {data:rl,error:e1}=await sb.from('partner_roles').select('role').eq('email',ME).maybeSingle();if(e1)throw e1;if(!rl)return noAccess();RO=rl.role=='view';hdr();
-  const rows=await loadAll();S=dflt();S.partners=[];BASE={};rows.forEach(r=>applyRow(r));S.partners.sort((a,b)=>a.id-b.id);fixS();
+  const rows=await loadAll();S=dflt();S.partners=[];BASE={};rows.forEach(r=>applyRow(r));S.partners.sort((a,b)=>a.id-b.id);fixS();if(RO)deepFreeze(S);
   if(!rows.some(r=>r.kind=='meta')){
    if(RO){$('#app').innerHTML=loadingCard('The books have not been set up yet. Ask a full partner to sign in first.');return}
    const L=LOCAL,n=L&&L.tx?L.tx.length:0;let use=false;
