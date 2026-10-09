@@ -55,15 +55,15 @@ table{width:100%;border-collapse:collapse}th{font-size:11px;text-transform:upper
 .ov{position:fixed;inset:0;background:#0009;display:flex;align-items:center;justify-content:center;z-index:9;padding:20px}.mod{background:var(--card);padding:18px;border-radius:16px;width:100%;max-width:360px;max-height:90%;overflow:auto}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:90px;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;z-index:10;max-width:90%;font-size:14px}
 @media print{#hd,nav,.noprint{display:none}body{background:#fff;color:#000}.card{border:0;box-shadow:none}}
-</style></head><body><header id="hd"></header><main id="app"></main><nav id="nv"></nav>
+</style></head><body><header id="hd"></header><main id="app"></main><nav id="nv" style="display:none"></nav>
 <script>
 const TYPES={income:'Sale / income',expense:'Expense / purchase',capital:'Capital in',drawing:'Drawing',invoice:'Credit sale (invoice)',stock:'Purchase of goods',stockc:'Purchase of goods (credit)',count:'Stock count',stockcap:'Opening stock (partner capital)',bill:'Credit purchase (bill)',rcpt:'Payment from customer',pay:'Payment to supplier',loanpay:'Loan repayment',loanin:'Loan received',salary:'Salary paid',transfer:'Transfer'};
 const IN=['income','capital','rcpt','loanin'],OUT=['expense','drawing','salary','pay','loanpay','stock'],RK=['is','bs','inv','cap','cf'],MT={emi:'Equal instalments',equal:'Equal principal',flat:'Flat interest',bullet:'Interest monthly, principal at the end'};
 const CATS={income:['Sales','Service fees','Other income'],expense:['Rent','Salaries','Transport','Utilities','Supplies','Bank & mobile charges','Other expense']};
-let S={accounts:['Bank','Cash','Mobile Money'],partners:[{id:1,name:'Partner 1',ratio:34},{id:2,name:'Partner 2',ratio:33},{id:3,name:'Partner 3',ratio:33}],tx:[],seq:10,loans:[],cust:{},apps:[],appN:0,appRule:{need:0,min:0}};
-try{const r=localStorage.getItem('pb1');if(r)S=JSON.parse(r)}catch(e){}
+let LOCAL=null;let S={accounts:['Bank','Cash','Mobile Money'],partners:[{id:1,name:'Partner 1',ratio:34},{id:2,name:'Partner 2',ratio:33},{id:3,name:'Partner 3',ratio:33}],tx:[],seq:10,loans:[],cust:{},apps:[],appN:0,appRule:{need:0,min:0}};
+try{const r=localStorage.getItem('pb1');if(r)LOCAL=JSON.parse(r)}catch(e){}
 S.loans=S.loans||[];S.cust=S.cust||{};S.acctTypes=S.acctTypes||{};S.apps=S.apps||[];S.appN=S.appN||0;S.appRule=Object.assign({need:0,min:0,file:1,allow:0},S.appRule||{});apMig();
-const save=()=>{try{localStorage.setItem('pb1',JSON.stringify(S))}catch(e){}};
+
 let tab='home',entryForm={type:'income'},rep={sel:{is:true},from:'',to:new Date().toISOString().slice(0,10),kind:'is'};
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const f=n=>(n<0?'(':'')+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+(n<0?')':'');
@@ -116,7 +116,7 @@ const apSpent=id=>sum(S.tx.filter(t=>t.appr==id).map(t=>+t.amt));
 const apState=a=>{if(a.status!='verified')return a.status;const s=apSpent(a.id);return s>=a.est-.009?'funded':s>0?'partly':'verified'};
 const APL={received:['Awaiting verification','a'],verified:['Verified · ready to fund','g'],partly:['Partly funded','t'],funded:['Funded','g'],rejected:['Rejected','r']};
 const apOptions=t=>S.apps.filter(a=>a.status=='verified'&&(t=='stock'?a.type=='stock':a.type!='stock')&&a.est-apSpent(a.id)>.009).map(a=>`<option value="${a.id}" ${entryForm.appr==a.id?'selected':''}>${esc(a.no)} · ${esc(a.desc.slice(0,26))} · left ${f(a.est-apSpent(a.id))}</option>`).join('');
-const putProof=async file=>{const id='p'+Date.now()+Math.floor(Math.random()*1e4);await sdb('readwrite',s=>s.put({id,proof:true,name:file.name||'proof',mime:file.type||'',blob:file}));return id};
+const putProof=async file=>{const id='p'+nid(),{error}=await sb.storage.from('proofs').upload(id,file,{contentType:file.type||'application/octet-stream'});if(error)throw error;return id};
 function approvals(){const R=S.appRule,mn=+R.min||0,st=a=>apState(a),flt={received:a=>st(a)=='received',ready:a=>st(a)=='verified'||st(a)=='partly',funded:a=>st(a)=='funded',rejected:a=>st(a)=='rejected',all:()=>true},nm={received:'Awaiting',ready:'Ready',funded:'Funded',rejected:'Rejected',all:'All'};
  const L=S.apps.filter(flt[apFilter]||flt.all).sort((a,b)=>b.id-a.id);
  return `<h1>Funding</h1><div class="card"><div class="mut">Funding rule</div><div>Approvals are made in the procurement app. A stock purchase, asset or expense of <b>${mn?f(mn)+' and above':'any amount'}</b> is funded only after procurement provides proof of approval and it is verified here.</div>
@@ -150,21 +150,21 @@ function apFormHtml(){const sup=[...new Set(S.tx.filter(x=>x.party&&['bill','pay
 async function apSave(){const v=i=>$('#'+i).value.trim(),e=+v('ap_e'),ref=v('ap_x'),file=(($('#ap_f')||{}).files||[])[0],names=v('ap_a').split(',').map(x=>x.trim()).filter(Boolean);
  if(!ref)return toast('Enter the procurement reference.');if(S.apps.some(a=>a.ref.toLowerCase()==ref.toLowerCase()))return toast('That reference was already received.');if(!v('ap_d'))return toast('Describe what was approved.');if(!(e>0))return toast('Enter the approved amount.');if(!names.length)return toast('Name at least one approver.');if(!v('ap_n'))return toast('Enter the approval date.');
  if(file&&file.size>8e6)return toast('That file is too large (8 MB maximum).');let fid=null;if(file){try{fid=await putProof(file)}catch(x){return toast('The document could not be stored.')}}
- S.apps.push({id:S.seq++,no:ref,ref,date:TD(),type:v('ap_t'),desc:v('ap_d'),supplier:v('ap_s'),est:e,by:v('ap_b'),approvedBy:names.map(n=>({name:n,date:v('ap_n')})),approvalDate:v('ap_n'),status:'received',fileId:fid,fileName:file?file.name:'',source:'manual',verified:null});apForm=false;apFilter='received';save();show();toast('Proof received. Verify it before funding.')}
+ S.apps.push({id:nid(),no:ref,ref,date:TD(),type:v('ap_t'),desc:v('ap_d'),supplier:v('ap_s'),est:e,by:v('ap_b'),approvedBy:names.map(n=>({name:n,date:v('ap_n')})),approvalDate:v('ap_n'),status:'received',fileId:fid,fileName:file?file.name:'',source:'manual',verified:null});apForm=false;apFilter='received';save();show();toast('Proof received. Verify it before funding.')}
 async function apImport(){const v=await askForm('Import from procurement app',[{k:'json',l:'Paste the approval data exported by the procurement app',type:'area',ph:'{"format":"procurement-approval/1", ...}'}]);if(!v||!v.json.trim())return;
  let j;try{j=JSON.parse(v.json)}catch(e){return toast('That is not valid approval data.')}
  if(!j||j.format!='procurement-approval/1'||!j.ref||!(+j.amount>0)||!['stock','asset','expense'].includes(j.type))return toast('Missing or invalid fields. Check the import format.');
  if(S.apps.some(a=>String(a.ref).toLowerCase()==String(j.ref).toLowerCase()))return toast('That reference was already received.');
  let fid=null,fn='';if(j.document&&j.document.data){try{const mime=j.document.mime||'application/pdf',blob=new Blob([u8('data:'+mime+';base64,'+j.document.data)],{type:mime});fid=await putProof(Object.assign(blob,{name:j.document.name||j.ref}));fn=j.document.name||j.ref}catch(e){toast('The attached document could not be read.')}}
  const names=(j.approvedBy||[]).map(x=>typeof x=='string'?{name:x,date:j.approvalDate||''}:{name:x.name,date:x.date||j.approvalDate||''}).filter(x=>x.name);
- S.apps.push({id:S.seq++,no:String(j.ref),ref:String(j.ref),date:TD(),type:j.type,desc:j.description||'',supplier:j.supplier||'',est:+j.amount,by:j.requestedBy||'',approvedBy:names,approvalDate:j.approvalDate||'',status:'received',fileId:fid,fileName:fn,source:'import',verified:null});apFilter='received';save();show();toast(j.ref+' imported. Verify it before funding.')}
+ S.apps.push({id:nid(),no:String(j.ref),ref:String(j.ref),date:TD(),type:j.type,desc:j.description||'',supplier:j.supplier||'',est:+j.amount,by:j.requestedBy||'',approvedBy:names,approvalDate:j.approvalDate||'',status:'received',fileId:fid,fileName:fn,source:'import',verified:null});apFilter='received';save();show();toast(j.ref+' imported. Verify it before funding.')}
 function apAttach(id){const i=document.createElement('input');i.type='file';i.accept='image/*,application/pdf';i.onchange=async()=>{const file=i.files[0];if(!file)return;if(file.size>8e6)return toast('That file is too large (8 MB maximum).');try{const a=S.apps.find(x=>x.id==id);a.fileId=await putProof(file);a.fileName=file.name;save();show()}catch(e){toast('The document could not be stored.')}};i.click()}
 async function apRule(){const R=S.appRule,v=await askForm('Funding rule',[{k:'min',l:'Require approval for amounts from (0 = any amount)',type:'number',v:R.min||0},{k:'need',l:'Minimum approvers named on the proof',type:'number',v:R.need||1},{k:'file',l:'Require the approval document',opts:[['1','Yes'],['0','No']]},{k:'allow',l:'Allow purchases without approval',opts:[['0','No, block them'],['1','Yes, but flag them']]}]);if(!v)return;const m=+v.min,n=Math.round(+v.need);if(!(m>=0)||!(n>=1))return toast('Enter valid numbers.');S.appRule={min:m,need:n,file:+v.file,allow:+v.allow};save();show()}
 async function apVerify(id){const a=S.apps.find(x=>x.id==id),R=S.appRule;
  if(R.file&&!a.fileId)return toast('Attach the proof document first.');if(a.approvedBy.length<Math.max(1,+R.need||1))return toast('The proof names '+a.approvedBy.length+' approver(s). The rule needs '+Math.max(1,+R.need||1)+'.');
  const el=S.partners.filter(p=>p.name.trim().toLowerCase()!=(a.by||'').trim().toLowerCase());if(!el.length)return toast('No partner is available to verify this.');
  const v=await askForm('Verify '+a.no,[{k:'by',l:'Verified by',opts:el.map(p=>[p.name,p.name])},{k:'dec',l:'Decision',opts:[['ok','Proof is valid. Ready to fund'],['no','Reject the proof']]},{k:'comment',l:'Comment (optional)',type:'text',v:''}]);if(!v)return;
- a.verified={by:v.by,date:TD(),comment:v.comment.trim()};a.status=v.dec=='ok'?'verified':'rejected';save();show();toast(a.status=='verified'?a.no+' is ready to fund.':a.no+' was rejected.')}
+ a.verified={by:v.by,email:ME,date:TD(),comment:v.comment.trim()};a.status=v.dec=='ok'?'verified':'rejected';save();show();toast(a.status=='verified'?a.no+' is ready to fund.':a.no+' was rejected.')}
 function apBuy(id){const a=S.apps.find(x=>x.id==id);entryForm={type:a.type=='stock'?'stock':'expense',appr:id,party:a.supplier||''};tab='add';show()}
 async function apDel(id){if(await askYes('Remove this approval proof?')){const a=S.apps.find(x=>x.id==id);if(a.fileId){try{await sdb('readwrite',s=>s.delete(a.fileId))}catch(e){}}S.apps=S.apps.filter(x=>x.id!=id);save();show()}}
 async function apFile(a){if(!a.fileId)return null;try{return await sdb('readonly',s=>s.get(a.fileId))}catch(e){return null}}
@@ -175,11 +175,11 @@ async function apView(id){const a=S.apps.find(x=>x.id==id),r=await apFile(a),sp=
  document.body.appendChild(d);d.querySelector('#pc').onclick=()=>d.remove();if(r)d.querySelector('#pd').onclick=async()=>{try{const dl=await claude.use('downloads');if(!dl)return toast('Download is not available.');await dl.save({filename:r.name||a.no,data:r.blob})}catch(e){if(!(e&&e.code=='declined'))toast('Download failed.')}}}
 function show(){try{show0()}catch(e){try{$('#app').innerHTML=`<div class="card"><h3>Something went wrong</h3><p class="mut">${esc((e&&e.message)||e)}</p><button onclick="tab='home';show()">Go to Home</button></div>`}catch(x){}}}
 if(window.addEventListener){window.addEventListener('error',e=>{try{toast('Error: '+(e.message||'unknown'))}catch(x){}});window.addEventListener('unhandledrejection',e=>{try{toast('Error: '+((e.reason&&e.reason.message)||'unknown'))}catch(x){}})}
-function show0(){$('#hd').innerHTML=`<img alt="" src="${LOGO}"><div><b>D&amp;K Liquor &amp; Whiskey</b><span>Partners’ Books</span></div>`;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==tab));
+function show0(){pendRender=false;if(RO&&tab=='add')tab='home';hdr();document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==tab));
  $('#app').innerHTML=({home,add,ledger,debts,stock,approvals,partners,reports})[tab]();window.scrollTo(0,0);if(tab=='reports'&&rep.saved)refreshSaved()}
 const IC={home:'<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',add:'<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',ledger:'<path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h4"/>',debts:'<path d="M3 7h18v12H3zM3 11h18M7 15h3"/>',approvals:'<path d="M9 4h6v3H9zM9 5.5H6V21h12V5.5h-3"/><path d="M9 14l2 2 4-4"/>',stock:'<path d="M3 8l9-5 9 5v9l-9 5-9-5zM3 8l9 5 9-5M12 13v9"/>',partners:'<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6M17 11a3 3 0 1 0 0-6M21 20c0-2.7-1.6-4.7-4-5.6"/>',reports:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'};
-$('#nv').innerHTML=[['home','Home'],['add','Add'],['ledger','Ledger'],['debts','Debts'],['stock','Stock'],['approvals','Funding'],['partners','Partners'],['reports','Reports']].map(t=>`<button data-t="${t[0]}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${IC[t[0]]}</svg>${t[1]}</button>`).join('');
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;show()});
+function buildNav(){$('#nv').style.display='flex';$('#nv').innerHTML=[['home','Home'],['add','Add'],['ledger','Ledger'],['debts','Debts'],['stock','Stock'],['approvals','Funding'],['partners','Partners'],['reports','Reports']].filter(t=>!(RO&&t[0]=='add')).map(t=>`<button data-t="${t[0]}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${IC[t[0]]}</svg>${t[1]}</button>`).join('');
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;show()})}
 ['gesturestart','gesturechange','gestureend'].forEach(e=>document.addEventListener(e,x=>x.preventDefault()));
 document.addEventListener('wheel',e=>{if(e.ctrlKey)e.preventDefault()},{passive:false});
 
@@ -188,7 +188,7 @@ function home(){const tot=sum(S.accounts.map(a=>bal(a))),p=profit('','');
  ${S.accounts.map((a,i)=>`<div class="row"><div><span style="font-weight:600">${esc(a)}</span><div class="mut">${acctType(a)}</div></div><div class="num">${f(bal(a))}<br><button class="x" style="color:var(--mut)" onclick="acctRen(${i})">Rename</button><button class="x" onclick="acctDel(${i})">Remove</button></div></div>`).join('')}<div class="seg" style="margin-top:10px"><button onclick="acctAdd()">Add bank / mobile money account</button></div></div>
  <div class="grid"><div class="card"><div class="mut">Income</div><div class="pos"><b>${f(p.ti)}</b></div></div><div class="card"><div class="mut">Expenses</div><div class="neg"><b>${f(p.te)}</b></div></div></div>
  <div class="grid"><div class="card"><div class="mut">Owed to us</div><b>${f(sum(dues('r').map(x=>x[1])))}</b><div class="mut">Overdue ${f(sum(custList().map(a=>a.overdue)))}</div></div><div class="card"><div class="mut">We owe (suppliers + loans)</div><b>${f(sum(dues('p').map(x=>x[1]))+sum(S.loans.map(l=>loanBal(l.id))))}</b></div></div><div class="grid"><div class="card"><div class="mut">Loans outstanding</div><b>${f(sum(S.loans.map(l=>loanBal(l.id))))}</b></div><div class="card"><div class="mut">Inventory value</div><b>${f(invVal())}</b></div></div><div class="card"><div class="mut">Net profit to date</div><div class="big">${f(p.np)}</div></div>
- ${S.tx.length?'':'<p class="mut">No entries yet. Start with each partner’s opening capital under Add → Capital in.</p><button class="p" onclick="loadSample()">Load sample data</button>'}`}
+ ${S.tx.length?'':'<p class="mut">No entries yet. Start with each partner’s opening capital under Add → Capital in.</p>'}`}
 
 function crTog(){const c=$('#pm').value=='c';$('#pbox').style.display=(c||entryForm.type=='stock')?'':'none';$('#dbox').style.display=c?'':'none';$('#abox').style.display=c?'none':'';entryForm.credit=c}
 function goAdd(t){entryForm={type:t};tab='add';show()}
@@ -212,7 +212,7 @@ function add(){const t=entryForm.type,acc=S.accounts.map(a=>`<option>${esc(a)}</
  <label>Description</label><input id="ds" placeholder="Optional"><button class="p" onclick="addTx()">Save entry</button></div>`}
 async function addTx(){const t=entryForm.type,am=$('#am')?+$('#am').value:0,it=$('#it')?+$('#it').value||0:0,credit=(t=='income'||t=='expense'||t=='stock')&&$('#pm')&&$('#pm').value=='c',ty=credit?({income:'invoice',expense:'bill',stock:'stockc'})[t]:t;
  if(t=='loanpay'){if(!S.loans.length)return toast('Create a loan in the Debts tab first.');if(!(am>0||it>0))return toast('Enter the principal or interest paid.')}else if(t!='count'&&!(am>0))return toast('Enter an amount greater than zero.');
- const x={id:S.seq++,date:$('#d').value,type:ty,acct:(credit||t=='count'||t=='stockcap')?'':$('#ac').value,amt:am,desc:$('#ds').value};
+ const x={id:nid(),date:$('#d').value,type:ty,acct:(credit||t=='count'||t=='stockcap')?'':$('#ac').value,amt:am,desc:$('#ds').value};
  if(t=='stock'||t=='count'||t=='stockcap'){const im=$('#im').value.trim(),q=$('#qy').value,qn=+q;if(!im)return toast('Enter the item name.');if(q===''||!(t=='count'?qn>=0:qn>0))return toast('Enter the quantity.');x.item=im;x.qty=qn}
  if($('#cat'))x.cat=$('#cat').value.trim()||(t=='income'?'Other income':'Other expense');
  if($('#pt'))x.partner=+$('#pt').value;
@@ -231,7 +231,7 @@ async function addTx(){const t=entryForm.type,am=$('#am')?+$('#am').value:0,it=$
 const lbl=t=>t.type=='transfer'?t.acct+' → '+t.to:t.item?t.item+' × '+t.qty+(t.party?' · '+t.party:''):t.party?[t.cat,t.party].filter(Boolean).join(' · '):t.loan?loanName(t.loan)+(+t.int?' (incl. interest '+f(+t.int)+')':''):t.cat||pn(t.partner);
 function ledger(){const L=[...S.tx].sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
  return `<h1>Ledger</h1>`+(L.length?`<div class="card">${L.map(t=>{const pl=IN.includes(t.type)||t.type=='invoice'||t.type=='stockcap';
- return `<div class="row"><div><b>${TYPES[t.type]}</b> · ${esc(lbl(t))}<div class="mut">${t.date} · ${esc(t.acct||'on credit')}${t.partner&&t.cat?'':''}${t.desc?' · '+esc(t.desc):''}${t.partner?' · '+esc(pn(t.partner)):''}${t.appr?' · '+esc(apNo(t.appr)):''}${t.unapproved?' · <span class="neg">No approval</span>':''}</div></div>
+ return `<div class="row"><div><b>${TYPES[t.type]}</b> · ${esc(lbl(t))}<div class="mut">${t.date} · ${esc(t.acct||'on credit')}${t.partner&&t.cat?'':''}${t.desc?' · '+esc(t.desc):''}${t.partner?' · '+esc(pn(t.partner)):''}${t.appr?' · '+esc(apNo(t.appr)):''}${t.unapproved?' · <span class="neg">No approval</span>':''}${t._by?' · '+esc(String(t._by).split('@')[0]):''}</div></div>
  <div class="num ${t.type=='transfer'?'':pl?'pos':'neg'}">${t.type=='count'?'counted':f(ca(t))}<br><button class="x" onclick="del(${t.id})" aria-label="Delete entry">Delete</button></div></div>`}).join('')}</div>`:'<p class="mut">Nothing recorded yet.</p>')}
 async function del(id){if(await askYes('Delete this entry?')){S.tx=S.tx.filter(t=>t.id!=id);save();show()}}
 
@@ -287,7 +287,7 @@ function custGo(i){entryForm={type:'rcpt',party:custList()[i].name};tab='add';sh
 async function custTerms(i){const n=custList()[i].name,c=custInfo(n),v=await askForm('Credit terms: '+n,[{k:'days',l:'Credit period (days)',type:'number',v:c.days},{k:'limit',l:'Credit limit (0 = no limit)',type:'number',v:c.limit}]);if(!v)return;const d=+v.days,l=+v.limit;if(!(d>=0)||!(l>=0))return toast('Enter valid numbers.');ensureCust(n);S.cust[n].days=d;S.cust[n].limit=l;save();show();toast('Terms apply to new credit sales.')}
 async function custNote(i){const n=custList()[i].name,v=await askForm('Log contact: '+n,[{k:'kind',l:'Who made contact',opts:[['customer','Customer contacted us'],['us','We contacted the customer']]},{k:'text',l:'What was said (reason for delay, etc.)',type:'text',v:''},{k:'pdate',l:'Expected payment date (optional)',type:'date',v:''},{k:'pamt',l:'Amount expected (optional)',type:'number',v:''}]);if(!v)return;
  if(!v.text.trim()&&!v.pdate)return toast('Add a note or an expected payment date.');if(v.pdate&&!(+v.pamt>0))return toast('Enter the amount the customer expects to pay.');
- ensureCust(n);S.cust[n].notes.push({id:S.seq++,date:TD(),kind:v.kind,text:v.text.trim(),pdate:v.pdate||'',pamt:+v.pamt||0});save();show()}
+ ensureCust(n);S.cust[n].notes.push({id:nid(),date:TD(),kind:v.kind,text:v.text.trim(),pdate:v.pdate||'',pamt:+v.pamt||0});save();show()}
 async function delNote(i,id){const n=custList()[i].name;if(await askYes('Delete this note?')){S.cust[n].notes=S.cust[n].notes.filter(x=>x.id!=id);save();show()}}
 function askForm(t,fs){return new Promise(r=>{const d=document.createElement('div');d.className='ov';d.innerHTML=`<div class="mod"><h3>${esc(t)}</h3>${fs.map(x=>`<label>${esc(x.l)}</label>${x.opts?`<select data-k="${x.k}">${x.opts.map(o=>`<option value="${o[0]}">${esc(o[1])}</option>`).join('')}</select>`:x.type=='area'?`<textarea data-k="${x.k}" rows="6" placeholder="${esc(x.ph||'')}" style="width:100%;font-size:14px;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)"></textarea>`:`<input data-k="${x.k}" type="${x.type||'text'}" ${x.type=='number'?'inputmode="decimal" step="any"':''} value="${esc(x.v??'')}">`}`).join('')}<div class="seg" style="margin-top:14px"><button id="mc">Cancel</button><button class="on" id="mk">Save</button></div></div>`;document.body.appendChild(d);d.querySelector('#mc').onclick=()=>{d.remove();r(null)};d.querySelector('#mk').onclick=()=>{const o={};d.querySelectorAll('[data-k]').forEach(e=>o[e.dataset.k]=e.value);d.remove();r(o)}})}
 let openLoan=null,loanForm=false;
@@ -298,9 +298,9 @@ function debts(){const r=dues('r'),p=dues('p'),tot=l=>sum(l.map(x=>x[1]));
  return `<h1>Debts</h1><h2>Customer accounts (receivables)</h2>${custListHtml()}<h2>Payables (we owe)</h2><div class="card">${list(p,'pay','No supplier balances. Record a purchase with Add → Expense / purchase → On credit.')}${S.loans.filter(l=>loanBal(l.id)>.004).map(l=>`<div class="row"><span>Loan: ${esc(l.name)}</span><span class="num">${f(loanBal(l.id))}</span></div>`).join('')}<div class="row tot"><span>Total payables incl. loans</span><span class="num">${f(tot(p)+sum(S.loans.map(l=>loanBal(l.id))))}</span></div></div><h2>Loans</h2>${lf}<div class="card">${S.loans.length?S.loans.map(l=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="row" style="border:0;padding:0"><b>${esc(l.name)}</b><span class="num">${f(loanBal(l.id))}</span></div><div class="mut">Borrowed ${f(+l.amt)} on ${l.start} · ${l.rate}% a ${l.ratePer=='month'?'month':'year'} · ${l.term} months · ${MT[l.method]}</div><div class="seg" style="margin-top:6px"><button onclick="openLoan=${l.id==openLoan?'null':l.id};show()">${l.id==openLoan?'Hide schedule':'Repayment schedule'}</button><button onclick="delLoan(${l.id})">Delete loan</button></div>${l.id==openLoan?schedHtml(l):''}</div>`).join(''):'<p class="mut">No loans yet.</p>'}</div>${loanForm?'':'<button class="p" onclick="loanForm=true;show()">New loan</button>'}`}
 function payParty(k,i){const l=dues(k=='rcpt'?'r':'p');entryForm={type:k,party:l[i]?l[i][0]:''};tab='add';show()}
 function newLoan(){const v=i=>$('#'+i).value,a=+v('lf_a'),r=+v('lf_r')||0,n=Math.round(+v('lf_t'));if(!v('lf_n').trim())return toast('Enter the lender name.');if(!(a>0))return toast('Enter the amount borrowed.');if(!(n>0))return toast('Enter the term in months.');
- const id=S.seq++;S.loans.push({id,name:v('lf_n').trim(),amt:a,rate:r,term:n,start:v('lf_d'),method:v('lf_m'),ratePer:v('lf_p')||'year'});S.tx.push({id:S.seq++,date:v('lf_d'),type:'loanin',acct:v('lf_c'),amt:a,loan:id,desc:'Loan received'});save();loanForm=false;openLoan=id;tab='debts';show();toast('Loan recorded. It is now in your payables.')}
+ const id=nid();S.loans.push({id,name:v('lf_n').trim(),amt:a,rate:r,term:n,start:v('lf_d'),method:v('lf_m'),ratePer:v('lf_p')||'year'});S.tx.push({id:nid(),date:v('lf_d'),type:'loanin',acct:v('lf_c'),amt:a,loan:id,desc:'Loan received'});save();loanForm=false;openLoan=id;tab='debts';show();toast('Loan recorded. It is now in your payables.')}
 async function delLoan(id){if(await askYes('Delete this loan and all its entries?')){S.loans=S.loans.filter(l=>l.id!=id);S.tx=S.tx.filter(t=>t.loan!=id);save();show()}}
-async function payInst(id,k){const l=S.loans.find(x=>x.id==id),s=sched(l)[k-1],a=await askSel('Pay instalment '+k+' ('+f(s.pay)+') from',S.accounts);if(!a)return;S.tx.push({id:S.seq++,date:new Date().toISOString().slice(0,10),type:'loanpay',acct:a,amt:+s.p.toFixed(2),int:+s.i.toFixed(2),loan:id,inst:k,desc:'Instalment '+k});save();show()}
+async function payInst(id,k){const l=S.loans.find(x=>x.id==id),s=sched(l)[k-1],a=await askSel('Pay instalment '+k+' ('+f(s.pay)+') from',S.accounts);if(!a)return;S.tx.push({id:nid(),date:new Date().toISOString().slice(0,10),type:'loanpay',acct:a,amt:+s.p.toFixed(2),int:+s.i.toFixed(2),loan:id,inst:k,desc:'Instalment '+k});save();show()}
 function askSel(t,o){return new Promise(r=>{const d=document.createElement('div');d.className='ov';d.innerHTML=`<div class="mod"><h3 style="margin-top:0">${esc(t)}</h3><select id="ms">${o.map(x=>`<option>${esc(x)}</option>`).join('')}</select><div class="seg" style="margin-top:12px"><button id="mc">Cancel</button><button class="on" id="mk">Pay</button></div></div>`;document.body.appendChild(d);d.querySelector('#mc').onclick=()=>{d.remove();r(null)};d.querySelector('#mk').onclick=()=>{const v=d.querySelector('#ms').value;d.remove();r(v)}})}
 function partners(){const p=profit('','');const tr=sum(S.partners.map(x=>+x.ratio));
  return `<h1>Partners</h1><div class="card">${S.partners.map(x=>{const g=y=>sum(S.tx.filter(t=>t.type==y&&t.partner==x.id).map(t=>+t.amt)),c=g('capital')+g('stockcap'),d=g('drawing'),sp=g('salary'),se=salE(x,p),tot=share(x,p);
@@ -311,17 +311,18 @@ function partners(){const p=profit('','');const tr=sum(S.partners.map(x=>+x.rati
  ${Math.round(tr*100)!=10000?`<div class="warn">Profit shares add up to ${tr}%. They must total 100%.</div>`:''}</div>
  <button class="p" onclick="addP()">Add a partner</button>
  <p class="mut">Salaries are paid out of profit before it is shared. They count monthly from the first entry (or the report start date). Record each payment with Add → Salary paid. When a new partner joins, change everyone’s share % so the total is 100%.</p>
- <h2>Accounts &amp; data</h2><div class="seg"><button onclick="loadSample()">Load sample data</button><button onclick="clearAll()">Clear all entries</button></div><div class="seg" style="margin-top:6px"><button onclick="ex()">Download backup</button><button onclick="document.getElementById('imp').click()">Restore backup</button></div>
- <input id="imp" type="file" accept=".json" style="display:none" onchange="im(this)">`}
+ <h2>Accounts &amp; data</h2><div class="seg"><button onclick="ex()">Download backup</button><button onclick="document.getElementById('imp').click()">Restore backup</button></div>
+ <input id="imp" type="file" accept=".json" style="display:none" onchange="im(this)"><h2>Your account</h2><div class="card"><div>${esc(ME)}</div><div class="mut">${RO?'View-only access: you can look at everything and print reports.':'Full access'}</div><div class="seg" style="margin-top:10px"><button onclick="chgPw()">Change password</button><button onclick="signOut()">Sign out</button></div></div>`}
 function askText(t,v,ty){return new Promise(r=>{const d=document.createElement('div');d.className='ov';d.innerHTML=`<div class="mod"><h3 style="margin-top:0">${esc(t)}</h3><input id="mi" type="${ty||'text'}" ${ty=='number'?'inputmode="decimal" step="any"':''} value="${esc(v??'')}"><div class="seg" style="margin-top:12px"><button id="mc">Cancel</button><button class="on" id="mk">OK</button></div></div>`;document.body.appendChild(d);const e=x=>{d.remove();r(x)},i=d.querySelector('#mi');d.querySelector('#mc').onclick=()=>e(null);d.querySelector('#mk').onclick=()=>e(i.value);i.onkeydown=ev=>{if(ev.key=='Enter')e(i.value)};i.focus()})}
 function askYes(m){return new Promise(r=>{const d=document.createElement('div');d.className='ov';d.innerHTML=`<div class="mod"><p style="margin-top:0">${esc(m)}</p><div class="seg"><button id="mc">Cancel</button><button class="on" id="mk">Yes</button></div></div>`;document.body.appendChild(d);d.querySelector('#mc').onclick=()=>{d.remove();r(false)};d.querySelector('#mk').onclick=()=>{d.remove();r(true)}})}
 function toast(m){const d=document.createElement('div');d.className='toast';d.textContent=m;document.body.appendChild(d);setTimeout(()=>d.remove(),3500)}
 async function ren(id){const p=S.partners.find(x=>x.id==id),n=await askText('Partner name',p.name);if(n&&n.trim()){p.name=n.trim();save();show()}}
 async function ratio(id){const p=S.partners.find(x=>x.id==id),n=await askText('Profit share % for '+p.name,p.ratio,'number');if(n!==null&&n!==''&&!isNaN(+n)){p.ratio=+n;save();show()}}
 async function sal(id){const p=S.partners.find(x=>x.id==id),n=await askText('Agreed monthly salary for '+p.name,p.salary||0,'number');if(n!==null&&n!==''&&!isNaN(+n)){p.salary=+n;save();show()}}
-async function addP(){const n=await askText('New partner name');if(n&&n.trim()){S.partners.push({id:S.seq++,name:n.trim(),ratio:0,salary:0});save();show()}}
+async function addP(){const n=await askText('New partner name');if(n&&n.trim()){S.partners.push({id:nid(),name:n.trim(),ratio:0,salary:0});save();show()}}
 function ex(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S)],{type:'application/json'}));a.download='books-backup.json';a.click()}
-function im(i){const r=new FileReader();r.onload=()=>{try{S=JSON.parse(r.result);S.loans=S.loans||[];S.cust=S.cust||{};S.acctTypes=S.acctTypes||{};S.apps=S.apps||[];S.appN=S.appN||0;S.appRule=Object.assign({need:0,min:0,file:1,allow:0},S.appRule||{});apMig();save();show()}catch(e){toast('That file could not be read.')}};if(i.files[0])r.readAsText(i.files[0])}
+function im(i){const f0=i.files[0];if(!f0)return;const r=new FileReader();r.onload=async()=>{let o;try{o=JSON.parse(r.result);if(!o||!Array.isArray(o.tx)||!Array.isArray(o.partners))throw 0}catch(e){return toast('That file could not be read.')}
+ if(!(await askYes('This REPLACES the shared books for every partner with the contents of this backup. Continue?')))return;S=Object.assign(dflt(),o);fixS();S.partners.sort((a,b)=>a.id-b.id);dirty=true;await flush();show()};r.readAsText(f0)}
 
 function reports(){const k=rep.kind,{from,to}=rep,m=model(k),tabs=[['is','Income statement'],['bs','Balance sheet'],['cap','Partners’ capital'],['cf','Cash by account'],['inv','Inventory']];
  const tb=`<div class="scroll"><table style="width:100%;border-collapse:collapse;font-size:13px"><tr>${m.cols.map((c,j)=>`<th style="text-align:${j?'right':'left'}">${esc(c)}</th>`).join('')}</tr>${m.rows.map(r=>`<tr style="${r[2]=='t'?'font-weight:700;border-top:2px solid var(--ink)':r[2]=='h'?'font-weight:700;font-style:italic':''}"><td>${esc(r[0])}</td>${m.cols.slice(1).map((_,j)=>`<td class="num">${r[1][j]??''}</td>`).join('')}</tr>`).join('')}</table></div>`;
@@ -416,7 +417,7 @@ async function mkPdf(ms,one,title,per,lg){await lib('https://cdnjs.cloudflare.co
 
 async function loadSample(){if(S.tx.length&&!(await askYes('This replaces your current entries with sample data. Continue?')))return;
  const p=S.partners.map(x=>x.id),L=[];S.tx=L;S.partners[0].salary=3000;S.loans=[];S.apps=[];S.appN=0;S.cust={};S.accounts=['Bank','Cash','Mobile Money'];S.acctTypes={};
- const A=(d,type,acct,amt,o={})=>L.push({id:S.seq++,date:d,type,acct,amt,desc:'Sample',...o});
+ const A=(d,type,acct,amt,o={})=>L.push({id:nid(),date:d,type,acct,amt,desc:'Sample',...o});
  A('2026-07-01','capital','Bank',30000,{partner:p[0]});A('2026-07-01','capital','Bank',25000,{partner:p[1%p.length]});A('2026-07-01','capital','Cash',5000,{partner:p[2%p.length]});A('2026-07-02','capital','Mobile Money',4000,{partner:p[0]});
  [7,8,9,10].forEach((m,i)=>{const M='2026-'+String(m).padStart(2,'0')+'-',k=1+i*.08,n=m==10?5:28;
   A(M+'03','income','Cash',Math.round(9200*k),{cat:'Sales'});A(M+'10','income','Mobile Money',Math.round(6100*k),{cat:'Sales'});A(M+'17','income','Bank',Math.round(8400*k),{cat:'Sales'});A(M+'24','income','Cash',Math.round(7300*k),{cat:'Sales'});A(M+'05','income','Bank',Math.round(1500*k),{cat:'Service fees'});
@@ -425,13 +426,13 @@ async function loadSample(){if(S.tx.length&&!(await askYes('This replaces your c
   if(m<10){A(M+'27','drawing','Bank',2000,{partner:p[0]});A(M+'27','drawing','Bank',1500,{partner:p[1%p.length]});A(M+'28','drawing','Cash',1000,{partner:p[2%p.length]});A(M+'28','salary','Bank',3000,{partner:p[0]})}});
  A('2026-07-01','stockcap','',24000,{item:'Whiskey 750ml',qty:40,partner:p[0]});A('2026-07-01','stockcap','',12000,{item:'Vodka 750ml',qty:30,partner:p[1%p.length]});A('2026-07-01','stockcap','',3000,{item:'Beer crate',qty:45,partner:p[2%p.length]});
  [['2026-07-31',55,40,50],['2026-08-31',48,41,52],['2026-09-30',52,38,55]].forEach(c=>['Whiskey 750ml','Vodka 750ml','Beer crate'].forEach((n,k)=>A(c[0],'count','',0,{item:n,qty:c[k+1]})));
- const lid=S.seq++;S.loans.push({id:lid,name:'Equity Bank loan',amt:20000,rate:12,term:12,start:'2026-07-15',method:'emi'});A('2026-07-15','loanin','Bank',20000,{loan:lid});
+ const lid=nid();S.loans.push({id:lid,name:'Equity Bank loan',amt:20000,rate:12,term:12,start:'2026-07-15',method:'emi'});A('2026-07-15','loanin','Bank',20000,{loan:lid});
  sched(S.loans[0]).slice(0,2).forEach(s=>A(s.due,'loanpay','Bank',+s.p.toFixed(2),{loan:lid,int:+s.i.toFixed(2),inst:s.k}));
  A('2026-07-10','invoice','',6000,{cat:'Sales',party:'Kilimo Hotel'});A('2026-08-12','invoice','',5000,{cat:'Sales',party:'Kilimo Hotel'});A('2026-08-20','rcpt','Bank',6000,{party:'Kilimo Hotel'});A('2026-09-08','invoice','',4500,{cat:'Sales',party:'City Pub'});A('2026-09-25','rcpt','Mobile Money',2000,{party:'City Pub'});
  A('2026-08-05','bill','',8000,{cat:'Supplies',party:'Brewery Supplies'});A('2026-08-30','pay','Bank',5000,{party:'Brewery Supplies'});A('2026-09-28','pay','Bank',20000,{party:'Premier Spirits'});A('2026-09-14','bill','',3500,{cat:'Supplies',party:'Brewery Supplies'});
  A('2026-07-20','invoice','',3000,{cat:'Sales',party:'Savanna Lounge'});A('2026-08-25','invoice','',3500,{cat:'Sales',party:'Savanna Lounge'});A('2026-08-15','rcpt','Bank',3000,{party:'Savanna Lounge'});A('2026-09-20','rcpt','Cash',3500,{party:'Savanna Lounge'});
- S.cust={'Kilimo Hotel':{days:30,limit:10000,since:'2026-07-10',notes:[{id:S.seq++,date:'2026-09-15',kind:'customer',text:'Event was cancelled, cash is tight this month.',pdate:'2026-10-03',pamt:3000},{id:S.seq++,date:'2026-10-05',kind:'customer',text:'Will clear the balance after the weekend.',pdate:'2026-10-12',pamt:5000}]},'Savanna Lounge':{days:30,limit:8000,since:'2026-07-20',notes:[]},'City Pub':{days:30,limit:5000,since:'2026-09-08',notes:[]}};
- const ap=(ref,type,desc,sup,est,by,status,names,vd)=>S.apps.push({id:S.seq++,no:ref,ref,date:'2026-10-03',type,desc,supplier:sup,est,needed:'2026-10-20',reason:'',by,approvedBy:names.map(n=>({name:n,date:'2026-10-03'})),approvalDate:'2026-10-03',status,fileId:null,fileName:'',source:'manual',verified:vd||null});
+ S.cust={'Kilimo Hotel':{days:30,limit:10000,since:'2026-07-10',notes:[{id:nid(),date:'2026-09-15',kind:'customer',text:'Event was cancelled, cash is tight this month.',pdate:'2026-10-03',pamt:3000},{id:nid(),date:'2026-10-05',kind:'customer',text:'Will clear the balance after the weekend.',pdate:'2026-10-12',pamt:5000}]},'Savanna Lounge':{days:30,limit:8000,since:'2026-07-20',notes:[]},'City Pub':{days:30,limit:5000,since:'2026-09-08',notes:[]}};
+ const ap=(ref,type,desc,sup,est,by,status,names,vd)=>S.apps.push({id:nid(),no:ref,ref,date:'2026-10-03',type,desc,supplier:sup,est,needed:'2026-10-20',reason:'',by,approvedBy:names.map(n=>({name:n,date:'2026-10-03'})),approvalDate:'2026-10-03',status,fileId:null,fileName:'',source:'manual',verified:vd||null});
  ap('PROC-2026-0001','stock','Whiskey 750ml restock','Premier Spirits',16000,'Store manager','verified',[S.partners[1].name,S.partners[2%S.partners.length].name],{by:S.partners[0].name,date:'2026-10-04',comment:'Approval form checked.'});
  ap('PROC-2026-0002','asset','Cold room refrigeration unit','CoolTech Ltd',85000,'Store manager','received',[S.partners[1].name]);
  ap('PROC-2026-0003','expense','Shop signage repainting','Bright Signs',12000,'Store manager','rejected',[S.partners[1].name],{by:S.partners[0].name,date:'2026-10-05',comment:'Only one approver named.'});
@@ -439,5 +440,92 @@ async function loadSample(){if(S.tx.length&&!(await askYes('This replaces your c
  save();tab='home';show()}
 async function clearAll(){if(await askYes('Delete ALL entries? Partners stay. This cannot be undone.')){S.tx=[];save();show()}}
 
-show();
+/* ===== Shared books (Supabase) ===== */
+const SB_URL='https://zxtqkzwyfzpkcimebtvm.supabase.co',SB_KEY='sb_publishable_XEezqRlSFWfk-DbhHLa_Zg_NuNW3Qfn',SB_LIB='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.1',SEP='\u0001';
+let sb=null,ME='',RO=false,SYNC=false,BASE={},ftmr=null,rtmr=null,flushing=false,again=false,dirty=false,pendRender=false,stat='';
+const canon=v=>JSON.stringify(v,(k,x)=>x&&typeof x=='object'&&!Array.isArray(x)?Object.keys(x).sort().reduce((a,c)=>(a[c]=x[c],a),{}):x);
+const strip=o=>{if(!o||typeof o!='object')return o;const d={...o};delete d._by;return d};
+const nid=(()=>{let last=0;return()=>{let v=Date.now()*1000+Math.floor(Math.random()*1000);if(v<=last)v=last+1;last=v;return v}})();
+const dflt=()=>({accounts:['Bank','Cash','Mobile Money'],acctTypes:{},partners:[{id:1,name:'Partner 1',ratio:34,salary:0},{id:2,name:'Partner 2',ratio:33,salary:0},{id:3,name:'Partner 3',ratio:33,salary:0}],tx:[],loans:[],cust:{},apps:[],seq:10,appN:0,appRule:{need:0,min:0,file:1,allow:0}});
+function fixS(){S.loans=S.loans||[];S.cust=S.cust||{};S.acctTypes=S.acctTypes||{};S.apps=S.apps||[];S.tx=S.tx||[];S.partners=S.partners||[];S.accounts=S.accounts&&S.accounts.length?S.accounts:['Bank','Cash','Mobile Money'];S.appN=S.appN||0;S.appRule=Object.assign({need:0,min:0,file:1,allow:0},S.appRule||{});apMig()}
+function setStatus(t){stat=t;const e=$('#sst');if(e)e.textContent=t}
+function hdr(){$('#hd').innerHTML=`<img alt="" src="${LOGO}"><div><b>D&amp;K Liquor &amp; Whiskey</b><span>Partners’ Books${RO?' · View only':''}</span></div><div style="margin-left:auto;text-align:right;font-size:11px;opacity:.85"><span id="sst">${esc(stat)}</span></div>`}
+function toRows(){const m={},put=(k,id,d)=>{m[k+SEP+id]={kind:k,id:String(id),data:strip(d)}};
+ put('meta','main',{accounts:S.accounts,acctTypes:S.acctTypes,appRule:S.appRule,appN:S.appN});
+ S.partners.forEach(p=>put('partner',p.id,p));S.tx.forEach(t=>put('tx',t.id,t));S.loans.forEach(l=>put('loan',l.id,l));Object.keys(S.cust).forEach(n=>put('cust',n,S.cust[n]));S.apps.forEach(a=>put('app',a.id,a));return m}
+function applyRow(r,del){const id=String(r.id),k=r.kind+SEP+id,L={tx:'tx',partner:'partners',loan:'loans',app:'apps'};
+ if(r.kind=='meta'){if(del)return;Object.assign(S,r.data)}
+ else if(r.kind=='cust'){if(del)delete S.cust[id];else S.cust[id]=r.data}
+ else if(L[r.kind]){const arr=S[L[r.kind]],i=arr.findIndex(x=>String(x.id)==id);if(del){if(i>=0)arr.splice(i,1)}else{if((r.kind=='tx'||r.kind=='app')&&r.updated_by)r.data._by=r.updated_by;if(i>=0)arr[i]=r.data;else arr.push(r.data)}}
+ if(del)delete BASE[k];else BASE[k]=canon(strip(r.data))}
+async function loadAll(){let rows=[],from=0;for(;;){const {data,error}=await sb.from('records').select('*').range(from,from+999);if(error)throw error;rows=rows.concat(data||[]);if(!data||data.length<1000)break;from+=1000}return rows}
+async function flush(){if(RO||!SYNC||!sb)return;if(flushing){again=true;return}flushing=true;
+ try{do{again=false;const cur=toRows(),up=[],del={};
+  for(const k in cur){const c=canon(cur[k].data);if(BASE[k]!==c)up.push([k,cur[k],c])}
+  for(const k in BASE){if(!cur[k]){const p=k.split(SEP);(del[p[0]]=del[p[0]]||[]).push(p[1])}}
+  for(let i=0;i<up.length;i+=100){const ch=up.slice(i,i+100),{error}=await sb.from('records').upsert(ch.map(x=>x[1]),{onConflict:'kind,id'});if(error)throw error;ch.forEach(x=>BASE[x[0]]=x[2])}
+  for(const kind in del){const {error}=await sb.from('records').delete().eq('kind',kind).in('id',del[kind]);if(error)throw error;del[kind].forEach(id=>delete BASE[kind+SEP+id])}
+ }while(again);dirty=false;setStatus('Saved')}
+ catch(e){setStatus('Not saved, retrying…');clearTimeout(ftmr);ftmr=setTimeout(flush,6000)}
+ flushing=false}
+function save(){if(RO||!SYNC)return;dirty=true;setStatus('Saving…');clearTimeout(ftmr);ftmr=setTimeout(flush,300)}
+window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue=''}});
+function schedRender(){clearTimeout(rtmr);rtmr=setTimeout(()=>{const a=document.activeElement;if(tab=='add'||(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName))||document.querySelector('.ov')){pendRender=true;return}show()},350)}
+document.addEventListener('focusout',()=>{if(pendRender)setTimeout(()=>{const a=document.activeElement;if(tab!='add'&&!(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName))&&!document.querySelector('.ov')){pendRender=false;show()}},400)});
+function onRT(p){try{const del=p.eventType=='DELETE',r=del?p.old:p.new;if(!r||!r.kind)return;
+ if(!del){const k=r.kind+SEP+r.id,c=toRows()[k];if(c&&canon(c.data)==canon(strip(r.data)))return}
+ applyRow(r,del);S.partners.sort((a,b)=>a.id-b.id);fixS();schedRender()}catch(e){}}
+async function resync(){if(!SYNC||flushing||dirty)return;try{const rows=await loadAll(),seen=new Set();let ch=false;
+ rows.forEach(r=>{const k=r.kind+SEP+r.id;seen.add(k);if(BASE[k]!==canon(strip(r.data))){applyRow(r);ch=true}});
+ Object.keys(BASE).forEach(k=>{if(!seen.has(k)){const p=k.split(SEP);applyRow({kind:p[0],id:p[1]},true);ch=true}});
+ if(ch){S.partners.sort((a,b)=>a.id-b.id);fixS();schedRender()}}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState=='visible')resync()});
+function subscribe(){try{sb.channel('records-live').on('postgres_changes',{event:'*',schema:'public',table:'records'},onRT).subscribe(s=>{if(s=='SUBSCRIBED')setStatus(dirty?'Saving…':'Live')})}catch(e){}}
+/* view-only guard */
+document.addEventListener('click',e=>{if(!RO)return;const b=e.target.closest&&e.target.closest('button');if(!b||b.dataset.t)return;const oc=b.getAttribute('onclick');if(!oc)return;
+ if(/^(openLoan=|apFilter=|rep\.|togSup\(|togCust\(|apView\(|svView\(|svDl\(|exportReports\(|refreshSaved\(|ex\(|chgPw\(|signOut\()/.test(oc.trim()))return;
+ e.stopPropagation();e.preventDefault();toast('View-only access: you can look and print reports, but not change anything.')},true);
+/* sign-in */
+const loadingCard=t=>`<div class="card"><p class="mut" style="margin:0">${esc(t)}</p></div>`;
+function showLogin(){$('#nv').style.display='none';$('#app').innerHTML=`<h1>Sign in</h1><div class="card"><div class="mut">Partners only. Use the email and password you were given.</div><label>Email</label><input id="lg_e" type="email" autocomplete="username" autocapitalize="none"><label>Password</label><input id="lg_p" type="password" autocomplete="current-password" onkeydown="if(event.key=='Enter')doLogin()"><button class="p" id="lg_b" onclick="doLogin()">Sign in</button></div>`}
+async function doLogin(){const e=$('#lg_e').value.trim(),p=$('#lg_p').value;if(!e||!p)return toast('Enter your email and password.');const b=$('#lg_b');if(b)b.disabled=true;
+ try{const {data,error}=await sb.auth.signInWithPassword({email:e,password:p});if(error){if(b)b.disabled=false;return toast(/invalid/i.test(error.message)?'Wrong email or password.':'Sign-in failed: '+error.message)}await startSession(data.session)}catch(x){if(b)b.disabled=false;toast('Sign-in failed. Check your internet connection.')}}
+async function signOut(){try{await sb.auth.signOut()}catch(e){}location.reload()}
+async function chgPw(){const v=await askForm('Change password',[{k:'a',l:'New password (at least 10 characters)',type:'password',v:''},{k:'b',l:'Type it again',type:'password',v:''}]);if(!v)return;if(v.a.length<10)return toast('Use at least 10 characters.');if(v.a!=v.b)return toast('The two passwords do not match.');
+ const {error}=await sb.auth.updateUser({password:v.a});toast(error?'Could not change the password: '+error.message:'Password changed.')}
+function bootFail(m){$('#nv').style.display='none';$('#app').innerHTML=`<div class="card"><h3>Cannot open the books</h3><p class="mut">${esc(m)}</p><button class="p" onclick="location.reload()">Try again</button></div>`}
+function noAccess(){$('#nv').style.display='none';$('#app').innerHTML=`<div class="card"><h3>No access</h3><p class="mut">${esc(ME)} is signed in but has not been set up as a partner. Ask a full partner to add you.</p><button class="p" onclick="signOut()">Sign out</button></div>`}
+async function startSession(session){ME=(session.user.email||'').toLowerCase();$('#app').innerHTML=loadingCard('Opening the books…');
+ try{const {data:rl,error:e1}=await sb.from('partner_roles').select('role').eq('email',ME).maybeSingle();if(e1)throw e1;if(!rl)return noAccess();RO=rl.role=='view';hdr();
+  const rows=await loadAll();S=dflt();S.partners=[];BASE={};rows.forEach(r=>applyRow(r));S.partners.sort((a,b)=>a.id-b.id);fixS();
+  if(!rows.some(r=>r.kind=='meta')){
+   if(RO){$('#app').innerHTML=loadingCard('The books have not been set up yet. Ask a full partner to sign in first.');return}
+   const L=LOCAL,n=L&&L.tx?L.tx.length:0;let use=false;
+   if(L&&(n||(L.partners||[]).some(p=>!/^Partner \d$/.test(p.name))))use=await askYes('Found books saved on this device ('+n+' entries). Upload them to the shared database? Choose Yes only if these are your real books.');
+   S=use?Object.assign(dflt(),L):dflt();fixS();S.partners.sort((a,b)=>a.id-b.id);SYNC=true;dirty=true;await flush();
+  }
+  SYNC=true;setStatus('Saved');subscribe();buildNav();tab='home';show()}
+ catch(e){bootFail('Could not load the books: '+((e&&e.message)||e))}}
+async function boot(){$('#app').innerHTML=loadingCard('Loading…');hdr();
+ try{await lib(SB_LIB);sb=window.supabase.createClient(SB_URL,SB_KEY)}catch(e){return bootFail('Could not load the sign-in service. Check your internet connection.')}
+ sb.auth.onAuthStateChange(ev=>{if(ev=='SIGNED_OUT'&&SYNC)location.reload()});
+ try{const {data}=await sb.auth.getSession();if(!data||!data.session)return showLogin();await startSession(data.session)}catch(e){showLogin()}}
+/* files: approval proofs and saved PDFs live in Supabase Storage */
+async function apFile(a){if(!a.fileId)return null;try{const {data,error}=await sb.storage.from('proofs').download(a.fileId);if(error)throw error;return{name:a.fileName||a.no,mime:data.type||'',blob:data}}catch(e){return null}}
+async function apDel(id){if(await askYes('Remove this approval proof?')){const a=S.apps.find(x=>x.id==id);if(a.fileId){try{await sb.storage.from('proofs').remove([a.fileId])}catch(e){}}S.apps=S.apps.filter(x=>x.id!=id);save();show()}}
+async function savePdf(o){try{const id=String(nid()),B=sb.storage.from('reports'),up=async(n,b,t)=>{const {error}=await B.upload(id+n,b,{contentType:t});if(error)throw error};
+ const meta={id,name:o.fn,title:o.title,per:o.per,created:new Date().toISOString(),size:o.blob.size,kinds:o.ms.map(x=>x.name),by:ME},snap={ms:o.ms.map(x=>({name:x.name,period:x.period,cols:x.cols,rows:x.rows,note:x.note||'',imgs:x.imgs.map(i=>i.url)}))};
+ await up('.pdf',o.blob,'application/pdf');await up('.snap.json',new Blob([JSON.stringify(snap)],{type:'application/json'}),'application/json');await up('.meta.json',new Blob([JSON.stringify(meta)],{type:'application/json'}),'application/json');return true}catch(e){return false}}
+async function refreshSaved(){const el=$('#saved');if(!el)return;el.innerHTML='<p class="mut">Loading…</p>';
+ try{const B=sb.storage.from('reports'),{data,error}=await B.list('',{limit:300,sortBy:{column:'name',order:'desc'}});if(error)throw error;
+  const names=(data||[]).map(x=>x.name).filter(n=>n.endsWith('.meta.json')).sort().reverse().slice(0,30);
+  const L=(await Promise.all(names.map(async n=>{try{const {data:b}=await B.download(n);return JSON.parse(await b.text())}catch(e){return null}}))).filter(Boolean);
+  el.innerHTML=L.length?L.map(r=>`<div class="card"><b>${esc(r.title)}</b><div class="mut">${esc(r.per)}</div><div class="mut">Saved ${new Date(r.created).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})} by ${esc(String(r.by||'').split('@')[0])} · ${Math.max(1,Math.round(r.size/1024))} KB</div><div class="mut">${esc(r.kinds.join(', '))}</div><div class="seg" style="margin-top:8px"><button onclick="svView('${r.id}')">Preview</button><button onclick="svDl('${r.id}')">Download</button></div></div>`).join('')+'<p class="mut">Saved copies are shared with all partners and keep the figures exactly as they were when the PDF was created. They cannot be deleted.</p>':'<p class="mut">No saved PDFs yet. Every PDF printed by any partner is kept here.</p>'}
+ catch(e){el.textContent='Saved reports could not be loaded.'}}
+async function stoGet(id,n){const {data,error}=await sb.storage.from('reports').download(id+n);if(error)throw error;return data}
+async function svView(id){try{const meta=JSON.parse(await (await stoGet(id,'.meta.json')).text()),snap=JSON.parse(await (await stoGet(id,'.snap.json')).text()),lg=await logoPng(),one=snap.ms.length==1,d=document.createElement('div');d.className='ov';
+ d.innerHTML=`<div class="mod" style="max-width:640px;background:#fff;color:#000;font-family:'Times New Roman',Times,serif"><div style="text-align:center"><img alt="" src="${lg}" width="96" height="96"><div style="font-size:22px;font-weight:700;font-style:italic;margin-top:6px">${esc(meta.title)}</div><div style="font-size:11px;font-weight:700;font-style:italic;margin-bottom:14px">${esc(meta.per)}</div></div>${snap.ms.map(x=>`${one?'':`<div style="font-weight:700;font-size:16px;margin-top:18px">${esc(x.name)}</div><div style="font-style:italic;font-size:12px">${esc(x.period)}</div>`}${ptbl(x)}${x.imgs.map(u=>`<img alt="" style="width:100%;margin-top:10px" src="${u}">`).join('')}`).join('')}<div class="seg" style="margin-top:16px"><button id="pc">Close</button><button class="on" id="pd">Download PDF</button></div></div>`;
+ document.body.appendChild(d);d.querySelector('#pc').onclick=()=>d.remove();d.querySelector('#pd').onclick=()=>svDl(id)}catch(e){toast('That report could not be opened.')}}
+async function svDl(id){try{const meta=JSON.parse(await (await stoGet(id,'.meta.json')).text()),blob=await stoGet(id,'.pdf'),dl=await claude.use('downloads');await dl.save({filename:meta.name||id+'.pdf',data:blob})}catch(e){if(!(e&&e.code=='declined'))toast('Download failed.')}}
+boot();
 </script></body></html>
