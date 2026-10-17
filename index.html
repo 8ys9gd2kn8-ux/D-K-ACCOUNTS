@@ -54,11 +54,11 @@ table{width:100%;border-collapse:collapse}th{font-size:11px;text-transform:upper
 .bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin:3px 0 8px}.bar i{display:block;height:100%;background:var(--acc)}
 .ov{position:fixed;inset:0;background:#0009;display:flex;align-items:center;justify-content:center;z-index:9;padding:20px}.mod{background:var(--card);padding:18px;border-radius:16px;width:100%;max-width:360px;max-height:90%;overflow:auto}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:90px;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;z-index:10;max-width:90%;font-size:14px}
-@media print{#hd,nav,.noprint{display:none}body{background:#fff;color:#000}.card{border:0;box-shadow:none}}
+@media print{body.pr main,body.pr nav,body.pr #hd{display:none!important}body.pr .ov{position:static;background:none;padding:0;display:block}body.pr .mod{max-width:none;padding:0;max-height:none;overflow:visible;box-shadow:none}body.pr .noprint{display:none!important}#hd,nav,.noprint{display:none}body{background:#fff;color:#000}.card{border:0;box-shadow:none}}
 </style></head><body><header id="hd"></header><main id="app"></main><nav id="nv" style="display:none"></nav>
 <script>
-const TYPES={income:'Sale / income',expense:'Expense / purchase',capital:'Capital in',drawing:'Drawing',invoice:'Credit sale (invoice)',retin:'Sales return (goods back from a customer)',retout:'Purchase return (goods back to a supplier)',stock:'Purchase of goods',stockc:'Purchase of goods (credit)',count:'Stock count',stockcap:'Opening stock (partner capital)',bill:'Credit purchase (bill)',rcpt:'Payment from customer',pay:'Payment to supplier',loanpay:'Loan repayment',loanin:'Loan received',salary:'Salary paid',transfer:'Transfer'};
-const IN=['income','capital','rcpt','loanin','retout'],OUT=['expense','drawing','salary','pay','loanpay','stock','retin'],RK=['is','bs','inv','cap','cf'],MT={emi:'Equal instalments',equal:'Equal principal',flat:'Flat interest',bullet:'Interest monthly, principal at the end'};
+const TYPES={income:'Sale / income',expense:'Expense / purchase',capital:'Capital in',drawing:'Drawing',invoice:'Credit sale (invoice)',retin:'Sales return (goods back from a customer)',retout:'Purchase return (goods back to a supplier)',possale:'Shop sale (POS)',shoprem:'Shopkeeper handover received',stock:'Purchase of goods',stockc:'Purchase of goods (credit)',count:'Stock count',stockcap:'Opening stock (partner capital)',bill:'Credit purchase (bill)',rcpt:'Payment from customer',pay:'Payment to supplier',loanpay:'Loan repayment',loanin:'Loan received',salary:'Salary paid',transfer:'Transfer'};
+const IN=['income','capital','rcpt','loanin','retout','shoprem'],OUT=['expense','drawing','salary','pay','loanpay','stock','retin'],RK=['is','bs','inv','cap','cf'],MT={emi:'Equal instalments',equal:'Equal principal',flat:'Flat interest',bullet:'Interest monthly, principal at the end'};
 const CATS={income:['Sales','Service fees','Other income'],expense:['Rent','Salaries','Transport','Utilities','Supplies','Bank & mobile charges','Other expense']};
 let LOCAL=null;let S={accounts:['Bank','Cash','Mobile Money'],partners:[{id:1,name:'Partner 1',ratio:34},{id:2,name:'Partner 2',ratio:33},{id:3,name:'Partner 3',ratio:33}],tx:[],seq:10,loans:[],cust:{},apps:[],appN:0,appRule:{need:0,min:0}};
 try{const r=localStorage.getItem('pb1');if(r)LOCAL=JSON.parse(r)}catch(e){}
@@ -84,7 +84,7 @@ function sched(L){const n=+L.term,r=(L.ratePer=='month'?L.rate/100:L.rate/1200),
 const isPaid=(l,k)=>S.tx.some(t=>t.type=='loanpay'&&t.loan==l.id&&t.inst==k);
 const inR=(t,from,to)=>(!from||t.date>=from)&&(!to||t.date<=to);
 function profit(from,to){const L=S.tx.filter(t=>inR(t,from,to)),inc={},exp={};
- L.forEach(t=>{if(t.type=='income'||t.type=='invoice')inc[t.cat]=(inc[t.cat]||0)+ +t.amt;if(t.type=='expense'||t.type=='bill')exp[t.cat]=(exp[t.cat]||0)+ +t.amt;if(t.type=='loanpay'&&+t.int)exp['Loan interest']=(exp['Loan interest']||0)+ +t.int});
+ L.forEach(t=>{if(t.type=='income'||t.type=='invoice'||t.type=='possale')inc[t.cat]=(inc[t.cat]||0)+ +t.amt;if(t.type=='expense'||t.type=='bill')exp[t.cat]=(exp[t.cat]||0)+ +t.amt;if(t.type=='loanpay'&&+t.int)exp['Loan interest']=(exp['Loan interest']||0)+ +t.int});
  const ti=sum(Object.values(inc)),te=sum(Object.values(exp)),beg=from?invVal(prevDay(from)):0,pur=sum(L.filter(t=>t.type=='stock'||t.type=='stockc').map(t=>+t.amt)),intro=sum(L.filter(t=>t.type=='stockcap').map(t=>+t.amt)),end=invVal(to),sr=sum(L.filter(t=>t.type=='retin').map(t=>+t.amt)),pr=sum(L.filter(t=>t.type=='retout').map(t=>+t.amt)),cogs=beg+pur-pr+intro-end,gp=ti-sr-cogs;
  return{inc,exp,ti,te,beg,pur,intro,end,sr,pr,cogs,gp,np:gp-te,f:from,t:to}}
 const mo=(a,b)=>{const d=S.tx.map(x=>x.date).sort();a=a||d[0];b=b||new Date().toISOString().slice(0,10);return(!a||b<a)?0:(+b.slice(0,4)-+a.slice(0,4))*12+(+b.slice(5,7)-+a.slice(5,7))+1};
@@ -210,12 +210,94 @@ async function savOut(){const sv=S.sav,b=savBal();if(!sv.account)return;if(!(b>0
  const a=+v.amt;if(!(a>0))return toast('Enter an amount greater than zero.');if(a>b+.004)return toast('That is more than the savings hold.');if(!v.reason.trim())return toast('Write the reason. It is kept in the history.');
  if(!(await askYes('Move '+f(a)+' out of the emergency savings?')))return;
  S.tx.push({id:nid(),date:TD(),type:'transfer',acct:sv.account,to:v.to,amt:a,save:'use',reason:v.reason.trim(),desc:v.reason.trim()});save();show()}
+
+/* ===== Point of sale and shopkeeper takings ===== */
+const JSPDF='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+let cart=[],posPay='cash',posCust='',posSearch='',tender='';
+function posRebuild(){S.tx=S.tx.filter(t=>!t._pos);
+ S.pos.forEach(p=>{if(p.void)return;const b={_pos:true,id:p.id,date:p.date,desc:'Receipt '+p.no,acct:'',amt:p.total,cat:'Sales',pos:p.id};
+  if(p.pay=='credit')S.tx.push({...b,type:'invoice',party:p.customer,due:addDays(p.date,custInfo(p.customer).days)});else S.tx.push({...b,type:'possale',method:p.pay})});
+ S.remit.forEach(r=>S.tx.push({_pos:true,id:r.id,type:'shoprem',date:r.date,acct:r.acct,amt:+r.received,desc:'Shopkeeper handover for '+r.keyDate+(r.note?' – '+r.note:'')}))}
+const shopDue=to=>sum(S.tx.filter(t=>t.type=='possale'&&(!to||t.date<=to)).map(t=>+t.amt))-sum(S.tx.filter(t=>t.type=='shoprem'&&(!to||t.date<=to)).map(t=>+t.amt));
+const posNo=()=>'R'+String(Math.max(0,...S.pos.map(p=>parseInt(String(p.no||'').replace(/\D/g,''))||0))+1).padStart(5,'0');
+const prodList=()=>S.prods.filter(p=>p.active!==false).sort((a,b)=>a.name.localeCompare(b.name));
+const cartTotal=()=>r2(sum(cart.map(l=>l.qty*l.price)));
+const who=e=>String(e||'').split('@')[0];
+function gridHtml(){const q=posSearch.toLowerCase(),L=prodList().filter(p=>!q||p.name.toLowerCase().includes(q));
+ return L.length?L.map(p=>`<button style="text-align:left;padding:10px" onclick="posAdd(${p.id})"><b>${esc(p.name)}</b><div class="mut">${f(p.price)}</div></button>`).join(''):`<div class="mut" style="grid-column:1/-1">${S.prods.length?'No product matches.':'No products yet. Ask a partner to add them under Shop, or use a custom item.'}</div>`}
+function posGrid(){const g=$('#pgrid');if(g)g.innerHTML=gridHtml()}
+function cartHtml(){const tot=cartTotal();
+ return `<div class="card"><h3 style="margin-bottom:8px">Cart</h3>${cart.length?cart.map((l,i)=>`<div class="row"><div>${esc(l.name)}<div class="mut">${f(l.price)} each</div></div><div class="num"><button style="padding:4px 10px" onclick="posQty(${i},-1)">−</button> <b>${l.qty}</b> <button style="padding:4px 10px" onclick="posQty(${i},1)">+</button><div>${f(r2(l.qty*l.price))}</div></div></div>`).join(''):'<p class="mut" style="margin:0">Tap a product to add it.</p>'}
+ <div class="row tot"><span>Total</span><span class="num big">${f(tot)}</span></div>
+ <label>Payment</label><div class="seg">${[['cash','Cash'],['mobile','Mobile money'],['credit','Credit']].map(k=>`<button class="${posPay==k[0]?'on':''}" onclick="posPayset('${k[0]}')">${k[1]}</button>`).join('')}</div>
+ ${posPay=='credit'?`<label>Customer (approved for credit)</label><select id="pcu" onchange="posCust=this.value"><option value="">Choose a customer</option>${S.pcust.map(c=>`<option ${posCust==c.name?'selected':''}>${esc(c.name)}</option>`).join('')}</select>${S.pcust.length?'':'<div class="warn">No customers are approved for credit yet. A partner adds them under Shop.</div>'}`:posPay=='cash'?`<label>Amount received (optional)</label><input id="ptd" type="number" inputmode="decimal" value="${esc(tender)}" oninput="tender=this.value;posChange()"><div class="mut" id="pch">${chgText()}</div>`:''}
+ <button class="p" onclick="posDone()" ${cart.length?'':'disabled'}>Complete sale and print receipt</button></div>`}
+const chgText=()=>{const t=+tender,tot=cartTotal();return t>0&&tot>0?(t>=tot?'Change to give: '+f(r2(t-tot)):'Short by '+f(r2(tot-t))):''};
+function posChange(){const e=$('#pch');if(e)e.textContent=chgText()}
+function posCartRefresh(){const c=$('#pcart');if(c)c.innerHTML=cartHtml()}
+function posAdd(id){const p=S.prods.find(x=>x.id==id);if(!p)return;const l=cart.find(x=>x.pid==id);if(l)l.qty++;else cart.push({pid:id,name:p.name,item:p.item||p.name,price:+p.price,qty:1});posCartRefresh()}
+function posQty(i,d){cart[i].qty+=d;if(cart[i].qty<=0)cart.splice(i,1);posCartRefresh()}
+function posPayset(k){posPay=k;posCartRefresh()}
+async function posCustom(){const v=await askForm('Custom item',[{k:'name',l:'Item',type:'text',v:''},{k:'price',l:'Price each',type:'number',v:''},{k:'qty',l:'Quantity',type:'number',v:'1'}]);if(!v)return;const pr=+v.price,q=+v.qty;if(!v.name.trim()||!(pr>0)||!(q>0))return toast('Enter the item, a price and a quantity.');cart.push({pid:0,name:v.name.trim(),item:v.name.trim(),price:pr,qty:q});posCartRefresh()}
+async function posDone(){if(!cart.length)return;const tot=cartTotal(),t=+tender;
+ if(posPay=='credit'){if(!posCust)return toast('Choose the customer for this credit sale.');const c=S.pcust.find(x=>x.name==posCust);if(!c)return toast('That customer is not approved for credit.');if(c.limit>0&&tot>c.limit)return toast('This is above the credit limit of '+f(c.limit)+' for '+c.name+'.')}
+ if(posPay=='cash'&&t>0&&t<tot)return toast('The amount received is less than the total.');
+ const now=new Date(),p={id:nid(),no:posNo(),date:TD(),time:now.toTimeString().slice(0,5),by:ME,lines:cart.map(l=>({name:l.name,item:l.item||l.name,qty:l.qty,price:l.price,amt:r2(l.qty*l.price)})),total:tot,pay:posPay,customer:posPay=='credit'?posCust:'',tender:posPay=='cash'&&t>0?t:0};
+ S.pos.push(p);if(!SHOP)posRebuild();save();cart=[];tender='';posCust='';show();rcptShow(p.id)}
+function pos(){const T=TD(),mine=S.pos.filter(p=>p.date==T&&(!SHOP||p.by==ME)).sort((a,b)=>b.id-a.id),ok=mine.filter(p=>!p.void),cashT=sum(ok.filter(p=>p.pay!='credit').map(p=>p.total)),credT=sum(ok.filter(p=>p.pay=='credit').map(p=>p.total));
+ return `<h1>Point of sale</h1><div class="grid"><div class="card"><div class="mut">Cash and mobile money today</div><b>${f(cashT)}</b><div class="mut">to hand over</div></div><div class="card"><div class="mut">Credit sales today</div><b>${f(credT)}</b></div></div>
+ <div class="card" style="margin-top:12px"><input id="ps" placeholder="Search products" value="${esc(posSearch)}" oninput="posSearch=this.value;posGrid()"><div id="pgrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">${gridHtml()}</div><button style="margin-top:10px;width:100%" onclick="posCustom()">Add a custom item</button></div>
+ <div id="pcart">${cartHtml()}</div>
+ <h2>Today’s receipts</h2><div class="card">${mine.length?mine.slice(0,20).map(p=>`<div class="row"><div><b>${esc(p.no)}</b> · ${p.pay=='credit'?'Credit: '+esc(p.customer):p.pay=='mobile'?'Mobile money':'Cash'}${p.void?' <span class="neg">VOID</span>':''}<div class="mut">${esc(p.time||'')} · ${p.lines.length} item(s)</div></div><div class="num">${f(p.total)}<br><button class="x" style="color:var(--mut)" onclick="rcptShow(${p.id})">View / print</button></div></div>`).join(''):'<p class="mut" style="margin:0">No sales yet today.</p>'}</div>
+ ${SHOP?`<h2>Your account</h2><div class="card"><div>${esc(ME)}</div><div class="seg" style="margin-top:10px"><button onclick="chgPw()">Change password</button><button onclick="signOut()">Sign out</button></div></div>`:''}`}
+function rcptHtml(p){const c=S.pcust.find(x=>x.name==p.customer),due=p.pay=='credit'?addDays(p.date,c?c.days:30):'';
+ return `<div id="rcpt" style="font-family:'Courier New',monospace;font-size:13px;color:#000"><div style="text-align:center"><img alt="" src="${LOGO}" width="56" height="56" style="border-radius:50%"><div style="font-weight:700;font-size:15px">D&amp;K Liquor &amp; Whiskey</div><div>Receipt ${esc(p.no)}${p.void?' (VOID)':''}</div><div>${p.date} ${esc(p.time||'')}</div><div>Served by ${esc(who(p.by))}</div></div><hr style="border:0;border-top:1px dashed #000">
+ ${p.lines.map(l=>`<div>${esc(l.name)}</div><div style="display:flex;justify-content:space-between"><span>&nbsp;&nbsp;${l.qty} x ${f(l.price)}</span><span>${f(l.amt)}</span></div>`).join('')}
+ <hr style="border:0;border-top:1px dashed #000"><div style="display:flex;justify-content:space-between;font-weight:700;font-size:15px"><span>TOTAL</span><span>${f(p.total)}</span></div>
+ <div>Paid by: ${p.pay=='credit'?'CREDIT':p.pay=='mobile'?'Mobile money':'Cash'}</div>${p.pay=='cash'&&p.tender?`<div>Received: ${f(p.tender)}</div><div>Change: ${f(r2(p.tender-p.total))}</div>`:''}
+ ${p.pay=='credit'?`<hr style="border:0;border-top:1px dashed #000"><div style="font-weight:700">CREDIT SALE</div><div>Customer: ${esc(p.customer)}</div><div>Please pay by ${due}</div>`:''}
+ <hr style="border:0;border-top:1px dashed #000"><div style="text-align:center">Thank you for shopping with us</div></div>`}
+function rcptShow(id){const p=S.pos.find(x=>x.id==id);if(!p)return;const d=document.createElement('div');d.className='ov';
+ d.innerHTML=`<div class="mod" style="max-width:340px;background:#fff;color:#000">${rcptHtml(p)}<div class="seg noprint" style="margin-top:14px"><button id="rc">Close</button><button id="rd">PDF</button><button class="on" id="rp">Print</button></div></div>`;
+ document.body.appendChild(d);d.querySelector('#rc').onclick=()=>d.remove();d.querySelector('#rd').onclick=()=>rcptPdf(id);d.querySelector('#rp').onclick=()=>{document.body.classList.add('pr');setTimeout(()=>{window.print();setTimeout(()=>document.body.classList.remove('pr'),600)},60)}}
+async function rcptPdf(id){try{const p=S.pos.find(x=>x.id==id),dl=await claude.use('downloads');if(!dl||!p)return;await lib(JSPDF);const H=62+p.lines.length*9+(p.pay=='credit'?18:0)+(p.pay=='cash'&&p.tender?10:0),d=new window.jspdf.jsPDF({unit:'mm',format:[80,H]});let y=8;
+ const T=(t,x,al,st,sz)=>{d.setFont('courier',st||'normal');d.setFontSize(sz||9);d.text(String(t),x,y,{align:al||'left'})};
+ T('D&K Liquor & Whiskey',40,'center','bold',11);y+=5;T('Receipt '+p.no+(p.void?' (VOID)':''),40,'center');y+=4;T(p.date+' '+(p.time||''),40,'center');y+=4;T('Served by '+who(p.by),40,'center');y+=5;d.line(4,y,76,y);y+=5;
+ p.lines.forEach(l=>{T(l.name.slice(0,30),4);y+=4;T('  '+l.qty+' x '+f(l.price),4);T(f(l.amt),76,'right');y+=5});d.line(4,y,76,y);y+=5;T('TOTAL',4,'left','bold',11);T(f(p.total),76,'right','bold',11);y+=5;
+ T('Paid by: '+(p.pay=='credit'?'CREDIT':p.pay=='mobile'?'Mobile money':'Cash'),4);y+=4;if(p.pay=='cash'&&p.tender){T('Received: '+f(p.tender),4);y+=4;T('Change: '+f(r2(p.tender-p.total)),4);y+=4}
+ if(p.pay=='credit'){const c=S.pcust.find(x=>x.name==p.customer);T('CREDIT SALE - '+p.customer,4,'left','bold');y+=4;T('Please pay by '+addDays(p.date,c?c.days:30),4);y+=4}
+ y+=3;T('Thank you for shopping with us',40,'center');await dl.save({filename:p.no+'.pdf',data:d.output('blob')})}catch(e){if(!(e&&e.code=='declined'))toast('Could not create the receipt PDF.')}}
+function goPos(){tab='pos';show()}
+/* partners: shop takings, products, credit customers */
+function shopGroups(){const g={},k=(d,b)=>d+'|'+b,get=(d,b)=>g[k(d,b)]||(g[k(d,b)]={date:d,by:b,exp:0,n:0,rec:0,rem:[]});
+ S.pos.filter(p=>!p.void&&p.pay!='credit').forEach(p=>{const x=get(p.date,p.by);x.exp+=p.total;x.n++});S.remit.forEach(r=>{const x=get(r.keyDate,r.by);x.rec+=+r.received;x.rem.push(r)});
+ return Object.values(g).sort((a,b)=>b.date.localeCompare(a.date)||a.by.localeCompare(b.by))}
+function shop(){const G=shopGroups(),due=shopDue(),recent=[...S.pos].sort((a,b)=>b.id-a.id).slice(0,20);
+ return `<h1>Shop</h1><div class="card"><div class="mut">Due from shopkeepers (cash and mobile money not yet paid in)</div><div class="big">${f(due)}</div><button class="p" onclick="goPos()">Open the sales screen</button></div>
+ <h2>Money to receive from the shopkeeper</h2>${G.length?G.map((x,i)=>{const bal=r2(x.exp-x.rec),st=bal<=.004?['Received','g']:x.rec>0?['Partly received','t']:['Not received','r'];
+  return `<div class="card"><div class="row" style="border:0;padding:0"><b>${x.date}</b><span class="bd b-${st[1]}">${st[0]}</span></div><div class="mut">Shopkeeper ${esc(who(x.by))} · ${x.n} sale(s)</div><div class="row"><span>Expected</span><span class="num">${f(x.exp)}</span></div><div class="row"><span>Received</span><span class="num">${f(x.rec)}</span></div><div class="row"><span><b>Still to receive</b></span><span class="num ${bal>.004?'neg':''}"><b>${f(bal)}</b></span></div>
+  ${x.rem.map(r=>`<div class="mut">Received ${f(+r.received)} into ${esc(r.acct)} on ${r.date}${r.note?' · '+esc(r.note):''} · confirmed by ${esc(who(r.confirmedBy))} <button class="x" onclick="remUndo(${r.id})">Undo</button></div>`).join('')}
+  ${bal>.004?`<button class="p" onclick="markRecv(${i})">Mark money as received</button>`:''}</div>`}).join(''):'<p class="mut">No shop sales yet.</p>'}
+ <h2>Products and prices</h2><div class="card">${S.prods.length?[...S.prods].sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<div class="row"><div><b>${esc(p.name)}</b>${p.active===false?' <span class="mut">(hidden)</span>':''}</div><div class="num">${f(p.price)}<br><button class="x" style="color:var(--mut)" onclick="prodEdit(${p.id})">Edit</button><button class="x" onclick="prodDel(${p.id})">Remove</button></div></div>`).join(''):'<p class="mut" style="margin:0">No products yet.</p>'}<button style="margin-top:10px" onclick="prodEdit(0)">Add a product</button></div>
+ <h2>Customers approved for credit</h2><div class="card">${S.pcust.length?S.pcust.map(c=>`<div class="row"><div><b>${esc(c.name)}</b><div class="mut">Net ${c.days} days${c.limit?' · limit '+f(c.limit):' · no limit'}</div></div><div class="num"><button class="x" style="color:var(--mut)" onclick="pcEdit(${c.id})">Edit</button><button class="x" onclick="pcDel(${c.id})">Remove</button></div></div>`).join(''):'<p class="mut" style="margin:0">None yet. The shopkeeper can only sell on credit to customers listed here.</p>'}<button style="margin-top:10px" onclick="pcEdit(0)">Approve a customer for credit</button></div>
+ <h2>Recent receipts</h2><div class="card">${recent.length?recent.map(p=>`<div class="row"><div><b>${esc(p.no)}</b> · ${p.date} · ${p.pay=='credit'?'Credit: '+esc(p.customer):p.pay=='mobile'?'Mobile money':'Cash'}${p.void?' <span class="neg">VOID</span>':''}<div class="mut">${esc(who(p.by))}${p.void?' · '+esc(p.voidReason||''):''}</div></div><div class="num">${f(p.total)}<br><button class="x" style="color:var(--mut)" onclick="rcptShow(${p.id})">View</button>${p.void?'':`<button class="x" onclick="posVoid(${p.id})">Void</button>`}</div></div>`).join(''):'<p class="mut" style="margin:0">No receipts yet.</p>'}</div>`}
+async function markRecv(i){const x=shopGroups()[i];if(!x)return;const bal=r2(x.exp-x.rec),v=await askForm('Money received from '+who(x.by)+' for '+x.date,[{k:'amt',l:'Amount received (expected '+f(bal)+')',type:'number',v:bal},{k:'acct',l:'Paid into',opts:S.accounts.map(a=>[a,a])},{k:'note',l:'Note (optional, for example a shortage)',type:'text',v:''}]);if(!v)return;
+ const a=+v.amt;if(!(a>0))return toast('Enter the amount received.');if(a>bal+.009&&!(await askYes('That is more than the '+f(bal)+' still expected. Record it anyway?')))return;
+ S.remit.push({id:nid(),keyDate:x.date,by:x.by,date:TD(),expected:r2(x.exp),received:r2(a),acct:v.acct,note:v.note.trim(),confirmedBy:ME});posRebuild();save();show();toast(a<bal-.009?'Recorded. '+f(r2(bal-a))+' is still due.':'Recorded as received.')}
+async function remUndo(id){if(await askYes('Undo this received payment?')){S.remit=S.remit.filter(r=>r.id!=id);posRebuild();save();show()}}
+async function posVoid(id){const p=S.pos.find(x=>x.id==id),v=await askForm('Void receipt '+p.no,[{k:'why',l:'Reason',type:'text',v:''}]);if(!v)return;if(!v.why.trim())return toast('Write the reason.');p.void=true;p.voidReason=v.why.trim();p.voidBy=ME;posRebuild();save();show()}
+async function prodEdit(id){const p=S.prods.find(x=>x.id==id)||{name:'',price:'',active:true},v=await askForm(id?'Edit product':'New product',[{k:'name',l:'Product',type:'text',v:p.name},{k:'price',l:'Selling price',type:'number',v:p.price},{k:'active',l:'Shown on the sales screen',opts:[['1','Yes'],['0','No (hidden)']],sel:p.active===false?'0':'1'}]);if(!v)return;const pr=+v.price;if(!v.name.trim()||!(pr>0))return toast('Enter the product and its price.');
+ if(id){p.name=v.name.trim();p.price=pr;p.active=v.active=='1'}else S.prods.push({id:nid(),name:v.name.trim(),item:v.name.trim(),price:pr,active:v.active=='1'});save();show()}
+async function prodDel(id){if(await askYes('Remove this product from the sales screen? Past receipts keep it.')){S.prods=S.prods.filter(p=>p.id!=id);save();show()}}
+async function pcEdit(id){const c=S.pcust.find(x=>x.id==id)||{name:'',days:30,limit:0},v=await askForm(id?'Edit credit customer':'Approve a customer for credit',[{k:'name',l:'Customer name',type:'text',v:c.name},{k:'days',l:'Credit period (days)',type:'number',v:c.days},{k:'limit',l:'Credit limit per sale (0 = none)',type:'number',v:c.limit}]);if(!v)return;const d=+v.days,l=+v.limit;if(!v.name.trim()||!(d>=0)||!(l>=0))return toast('Enter the name and valid numbers.');
+ const n=v.name.trim();if(id){c.name=n;c.days=d;c.limit=l}else S.pcust.push({id:nid(),name:n,days:d,limit:l});ensureCust(n);S.cust[n].days=d;S.cust[n].limit=l;save();show()}
+async function pcDel(id){if(await askYes('Stop allowing credit sales to this customer?')){S.pcust=S.pcust.filter(c=>c.id!=id);save();show()}}
 function show(){try{show0()}catch(e){try{$('#app').innerHTML=`<div class="card"><h3>Something went wrong</h3><p class="mut">${esc((e&&e.message)||e)}</p><button onclick="tab='home';show()">Go to Home</button></div>`}catch(x){}}}
 if(window.addEventListener){window.addEventListener('error',e=>{try{toast('Error: '+(e.message||'unknown'))}catch(x){}});window.addEventListener('unhandledrejection',e=>{try{toast('Error: '+((e.reason&&e.reason.message)||'unknown'))}catch(x){}})}
-function show0(){pendRender=false;if(RO&&tab=='add')tab='home';hdr();document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==tab));
- $('#app').innerHTML=({home,add,ledger,debts,stock,approvals,savings,partners,reports})[tab]();window.scrollTo(0,0);lockRO();if(tab=='reports'&&rep.saved)refreshSaved()}
-const IC={home:'<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',add:'<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',ledger:'<path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h4"/>',debts:'<path d="M3 7h18v12H3zM3 11h18M7 15h3"/>',savings:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',approvals:'<path d="M9 4h6v3H9zM9 5.5H6V21h12V5.5h-3"/><path d="M9 14l2 2 4-4"/>',stock:'<path d="M3 8l9-5 9 5v9l-9 5-9-5zM3 8l9 5 9-5M12 13v9"/>',partners:'<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6M17 11a3 3 0 1 0 0-6M21 20c0-2.7-1.6-4.7-4-5.6"/>',reports:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'};
-function buildNav(){$('#nv').style.display='flex';$('#nv').innerHTML=[['home','Home'],['add','Add'],['ledger','Ledger'],['debts','Debts'],['stock','Stock'],['approvals','Funding'],['savings','Savings'],['partners','Partners'],['reports','Reports']].filter(t=>!(RO&&t[0]=='add')).map(t=>`<button data-t="${t[0]}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${IC[t[0]]}</svg>${t[1]}</button>`).join('');
+function show0(){pendRender=false;if(RO&&(tab=='add'||tab=='pos'))tab='home';hdr();document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==tab));
+ $('#app').innerHTML=({home,add,ledger,debts,stock,shop,pos,approvals,savings,partners,reports})[tab]();window.scrollTo(0,0);lockRO();if(tab=='reports'&&rep.saved)refreshSaved()}
+const IC={home:'<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',add:'<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',ledger:'<path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h4"/>',debts:'<path d="M3 7h18v12H3zM3 11h18M7 15h3"/>',pos:'<path d="M5 3h14v18H5zM8 7h8M8 11h3M8 15h3M14 11h2M14 15h2"/>',shop:'<path d="M4 9l1-5h14l1 5M4 9v11h16V9M4 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 4 0M10 20v-5h4v5"/>',savings:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',approvals:'<path d="M9 4h6v3H9zM9 5.5H6V21h12V5.5h-3"/><path d="M9 14l2 2 4-4"/>',stock:'<path d="M3 8l9-5 9 5v9l-9 5-9-5zM3 8l9 5 9-5M12 13v9"/>',partners:'<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6M17 11a3 3 0 1 0 0-6M21 20c0-2.7-1.6-4.7-4-5.6"/>',reports:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'};
+function buildNav(){$('#nv').style.display='flex';$('#nv').innerHTML=[['pos','POS'],['home','Home'],['add','Add'],['ledger','Ledger'],['debts','Debts'],['stock','Stock'],['shop','Shop'],['approvals','Funding'],['savings','Savings'],['partners','Partners'],['reports','Reports']].filter(t=>SHOP?t[0]=='pos':(t[0]!='pos'&&!(RO&&t[0]=='add'))).map(t=>`<button data-t="${t[0]}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${IC[t[0]]}</svg>${t[1]}</button>`).join('');
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;show()})}
 ['gesturestart','gesturechange','gestureend'].forEach(e=>document.addEventListener(e,x=>x.preventDefault()));
 document.addEventListener('wheel',e=>{if(e.ctrlKey)e.preventDefault()},{passive:false});
@@ -224,7 +306,7 @@ function home(){const tot=sum(S.accounts.map(a=>bal(a))),p=profit('','');
  return `<h1>Overview</h1><div class="card"><div class="mut">Total money held</div><div class="big">${f(tot)}</div>
  ${S.accounts.map((a,i)=>`<div class="row"><div><span style="font-weight:600">${esc(a)}</span><div class="mut">${acctType(a)}</div></div><div class="num">${f(bal(a))}<br><button class="x" style="color:var(--mut)" onclick="acctRen(${i})">Rename</button><button class="x" onclick="acctDel(${i})">Remove</button></div></div>`).join('')}<div class="seg" style="margin-top:10px"><button onclick="acctAdd()">Add bank / mobile money account</button></div></div>
  <div class="grid"><div class="card"><div class="mut">Income</div><div class="pos"><b>${f(p.ti)}</b></div></div><div class="card"><div class="mut">Expenses</div><div class="neg"><b>${f(p.te)}</b></div></div></div>
- <div class="grid"><div class="card"><div class="mut">Owed to us</div><b>${f(sum(dues('r').map(x=>x[1])))}</b><div class="mut">Overdue ${f(sum(custList().map(a=>a.overdue)))}</div></div><div class="card"><div class="mut">We owe (suppliers + loans)</div><b>${f(sum(dues('p').map(x=>x[1]))+sum(S.loans.map(l=>loanBal(l.id))))}</b></div></div><div class="grid"><div class="card"><div class="mut">Loans outstanding</div><b>${f(sum(S.loans.map(l=>loanBal(l.id))))}</b></div><div class="card"><div class="mut">Inventory value</div><b>${f(invVal())}</b></div></div>${S.sav&&S.sav.target>0?`<div class="card"><div class="row" style="border:0;padding:0"><span class="mut">Emergency savings</span><b>${Math.round(Math.min(100,savBal()/S.sav.target*100))}%</b></div><div class="bar"><i style="width:${Math.min(100,savBal()/S.sav.target*100)}%"></i></div><div class="mut">${f(savBal())} of ${f(S.sav.target)} by 31 Dec ${S.sav.year}</div><button style="margin-top:8px" onclick="tab='savings';show()">Open savings</button></div>`:''}<div class="card"><div class="mut">Net profit to date</div><div class="big">${f(p.np)}</div></div>
+ <div class="grid"><div class="card"><div class="mut">Owed to us</div><b>${f(sum(dues('r').map(x=>x[1])))}</b><div class="mut">Overdue ${f(sum(custList().map(a=>a.overdue)))}</div></div><div class="card"><div class="mut">We owe (suppliers + loans)</div><b>${f(sum(dues('p').map(x=>x[1]))+sum(S.loans.map(l=>loanBal(l.id))))}</b></div></div><div class="grid"><div class="card"><div class="mut">Loans outstanding</div><b>${f(sum(S.loans.map(l=>loanBal(l.id))))}</b></div><div class="card"><div class="mut">Inventory value</div><b>${f(invVal())}</b></div></div>${S.pos.length||S.remit.length?`<div class="card"><div class="mut">Due from shopkeepers</div><div class="big">${f(shopDue())}</div><button style="margin-top:8px" onclick="tab='shop';show()">Open shop</button></div>`:''}${S.sav&&S.sav.target>0?`<div class="card"><div class="row" style="border:0;padding:0"><span class="mut">Emergency savings</span><b>${Math.round(Math.min(100,savBal()/S.sav.target*100))}%</b></div><div class="bar"><i style="width:${Math.min(100,savBal()/S.sav.target*100)}%"></i></div><div class="mut">${f(savBal())} of ${f(S.sav.target)} by 31 Dec ${S.sav.year}</div><button style="margin-top:8px" onclick="tab='savings';show()">Open savings</button></div>`:''}<div class="card"><div class="mut">Net profit to date</div><div class="big">${f(p.np)}</div></div>
  ${S.tx.length?'':'<p class="mut">No entries yet. Start with each partner’s opening capital under Add → Capital in.</p>'}`}
 
 function crTogOld(){const c=$('#pm').value=='c';$('#pbox').style.display=(c||entryForm.type=='stock')?'':'none';$('#dbox').style.display=c?'':'none';$('#abox').style.display=c?'none':'';entryForm.credit=c}
@@ -268,11 +350,11 @@ async function addTx(){const t=entryForm.type,am=$('#am')?+$('#am').value:0,it=$
   if(apId){const a=S.apps.find(z=>z.id==apId),rem=a.est-apSpent(apId);if(am>rem+.009){if(!S.appRule.allow)return toast('This is more than the approved amount left ('+f(rem)+'). Get a new approval for the difference.');if(!(await askYes('This is '+f(am-rem)+' more than the approved amount left. Continue?')))return}x.appr=apId}
   else if(am>=(+S.appRule.min||0)){if(!S.appRule.allow)return toast('This needs a verified procurement approval before it can be funded. Receive the proof under Funding first.');if(!(await askYes('No verified approval is attached. The entry will be flagged. Continue?')))return;x.unapproved=true}}
  S.tx.push(x);save();entryForm={type:t};tab=(credit||rcredit)?'debts':'ledger';show()}
-const lbl=t=>t.type=='transfer'?t.acct+' → '+t.to:t.item?t.item+' × '+t.qty+(t.party?' · '+t.party:''):t.party?[t.cat,t.party].filter(Boolean).join(' · '):t.loan?loanName(t.loan)+(+t.int?' (incl. interest '+f(+t.int)+')':''):t.cat||pn(t.partner);
+const lbl=t=>t.type=='shoprem'?'Shopkeeper handover':t.type=='transfer'?t.acct+' → '+t.to:t.item?t.item+' × '+t.qty+(t.party?' · '+t.party:''):t.party?[t.cat,t.party].filter(Boolean).join(' · '):t.loan?loanName(t.loan)+(+t.int?' (incl. interest '+f(+t.int)+')':''):t.cat||pn(t.partner);
 function ledger(){const L=[...S.tx].sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
- return `<h1>Ledger</h1>`+(L.length?`<div class="card">${L.map(t=>{const pl=IN.includes(t.type)||t.type=='invoice'||t.type=='stockcap';
+ return `<h1>Ledger</h1>`+(L.length?`<div class="card">${L.map(t=>{const pl=IN.includes(t.type)||t.type=='invoice'||t.type=='stockcap'||t.type=='possale';
  return `<div class="row"><div><b>${TYPES[t.type]}</b> · ${esc(lbl(t))}<div class="mut">${t.date} · ${esc(t.acct||'on credit')}${t.partner&&t.cat?'':''}${t.desc?' · '+esc(t.desc):''}${t.partner?' · '+esc(pn(t.partner)):''}${t.appr?' · '+esc(apNo(t.appr)):''}${t.unapproved?' · <span class="neg">No approval</span>':''}${t.save?' · '+(t.save=='use'?'Emergency use':'Savings from '+t.src):''}${t._by?' · '+esc(String(t._by).split('@')[0]):''}</div></div>
- <div class="num ${t.type=='transfer'?'':pl?'pos':'neg'}">${t.type=='count'?'counted':f(ca(t))}<br><button class="x" onclick="del(${t.id})" aria-label="Delete entry">Delete</button></div></div>`}).join('')}</div>`:'<p class="mut">Nothing recorded yet.</p>')}
+ <div class="num ${t.type=='transfer'?'':pl?'pos':'neg'}">${t.type=='count'?'counted':f(ca(t))}<br><button class="x" onclick="del(${t.id})" aria-label="Delete entry" ${t._pos?'style="display:none"':''}>Delete</button></div></div>`}).join('')}</div>`:'<p class="mut">Nothing recorded yet.</p>')}
 async function del(id){if(await askYes('Delete this entry?')){S.tx=S.tx.filter(t=>t.id!=id);save();show()}}
 
 let supOpen=null;
@@ -368,7 +450,7 @@ async function sal(id){const p=S.partners.find(x=>x.id==id),n=await askText('Agr
 async function addP(){const n=await askText('New partner name');if(n&&n.trim()){S.partners.push({id:nid(),name:n.trim(),ratio:0,salary:0});save();show()}}
 function ex(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S)],{type:'application/json'}));a.download='books-backup.json';a.click()}
 function im(i){const f0=i.files[0];if(!f0)return;const r=new FileReader();r.onload=async()=>{let o;try{o=JSON.parse(r.result);if(!o||!Array.isArray(o.tx)||!Array.isArray(o.partners))throw 0}catch(e){return toast('That file could not be read.')}
- if(!(await askYes('This REPLACES the shared books for every partner with the contents of this backup. Continue?')))return;S=Object.assign(dflt(),o);fixS();S.partners.sort((a,b)=>a.id-b.id);dirty=true;await flush();show()};r.readAsText(f0)}
+ if(!(await askYes('This REPLACES the shared books for every partner with the contents of this backup. Continue?')))return;S=Object.assign(dflt(),o);fixS();posRebuild();S.partners.sort((a,b)=>a.id-b.id);dirty=true;await flush();show()};r.readAsText(f0)}
 
 function reports(){const k=rep.kind,{from,to}=rep,m=model(k),tabs=[['is','Income statement'],['bs','Balance sheet'],['cap','Partners’ capital'],['cf','Cash by account'],['inv','Inventory']];
  const tb=`<div class="scroll"><table style="width:100%;border-collapse:collapse;font-size:13px"><tr>${m.cols.map((c,j)=>`<th style="text-align:${j?'right':'left'}">${esc(c)}</th>`).join('')}</tr>${m.rows.map(r=>`<tr style="${r[2]=='t'?'font-weight:700;border-top:2px solid var(--ink)':r[2]=='h'?'font-weight:700;font-style:italic':''}"><td>${esc(r[0])}</td>${m.cols.slice(1).map((_,j)=>`<td class="num">${r[1][j]??''}</td>`).join('')}</tr>`).join('')}</table></div>`;
@@ -394,11 +476,11 @@ function model(k){const {from,to}=rep,P=S.partners,A=S.accounts,R=[],C=[];let co
   C.push(['bar','Sales, cost of goods and profit',['Net sales','Cost of goods','Gross profit','Expenses','Net profit'],[p.ti-p.sr,p.cogs,p.gp,p.te,p.np]]);
   if(p.te>0)C.push(['pie','Operating expenses by category',Object.keys(p.exp),Object.values(p.exp)]);
   C.push(['bar','Salary and profit share by partner',P.map(x=>x.name),P.map(x=>share(x,p))])}
- if(k=='bs'){const all=profit('',to),as=A.map(a=>bal(a,to)),ar=sum(dues('r',to).map(x=>x[1])),ap=sum(dues('p',to).map(x=>x[1])),lo=sum(S.loans.map(l=>loanBal(l.id,to))),inv=invVal(to),ta=sum(as)+ar+inv;
-  R.push(['Assets',[],'h']);A.forEach((a,i)=>R.push([a,[f(as[i])]]));R.push(['Accounts receivable',[f(ar)]],['Inventory',[f(inv)]],['Total assets',[f(ta)],'t'],['Liabilities',[],'h'],['Accounts payable',[f(ap)]],['Loans payable',[f(lo)]],['Total liabilities',[f(ap+lo)],'t'],['Partners’ equity',[],'h']);
+ if(k=='bs'){const all=profit('',to),as=A.map(a=>bal(a,to)),ar=sum(dues('r',to).map(x=>x[1])),ap=sum(dues('p',to).map(x=>x[1])),lo=sum(S.loans.map(l=>loanBal(l.id,to))),inv=invVal(to),sd=shopDue(to),ta=sum(as)+ar+inv+sd;
+  R.push(['Assets',[],'h']);A.forEach((a,i)=>R.push([a,[f(as[i])]]));R.push(['Accounts receivable',[f(ar)]],['Inventory',[f(inv)]],['Due from shopkeepers (takings not yet paid in)',[f(sd)]],['Total assets',[f(ta)],'t'],['Liabilities',[],'h'],['Accounts payable',[f(ap)]],['Loans payable',[f(lo)]],['Total liabilities',[f(ap+lo)],'t'],['Partners’ equity',[],'h']);
   const eq=P.map(x=>sm(t=>isCap(t)&&t.partner==x.id&&t.date<=to)+share(x,all)-sm(t=>(t.type=='drawing'||t.type=='salary')&&t.partner==x.id&&t.date<=to));
   P.forEach((x,i)=>R.push([x.name,[f(eq[i])]]));R.push(['Total equity',[f(sum(eq))],'t'],['Total liabilities and equity',[f(ap+lo+sum(eq))],'t']);W=Math.abs(ta-ap-lo-sum(eq))>.005;
-  C.push(['bar','Assets',[...A,'Receivables','Inventory'],[...as,ar,inv]],['bar','Equity by partner',P.map(x=>x.name),eq])}
+  C.push(['bar','Assets',[...A,'Receivables','Inventory','Due from shop'],[...as,ar,inv,sd]],['bar','Equity by partner',P.map(x=>x.name),eq])}
  if(k=='rp'){const r=dues('r',to),p=dues('p',to),tr=sum(r.map(x=>x[1])),tp=sum(p.map(x=>x[1]));R.push(['Receivables (owed to us)',[],'h']);r.forEach(([a,b])=>R.push([a,[f(b)]]));R.push(['Total receivables',[f(tr)],'t'],['Payables (we owe)',[],'h']);p.forEach(([a,b])=>R.push([a,[f(b)]]));R.push(['Total payables',[f(tp)],'t'],['Net position',[f(tr-tp)],'t']);C.push(['bar','Receivables vs payables',['Receivables','Payables'],[tr,tp]])}
  if(k=='ln'){cols=['Instalment','Payment','Principal','Interest','Balance'];S.loans.forEach(l=>{const s=sched(l);R.push([l.name+' – '+l.rate+'%, '+l.term+' months',[],'h']);s.forEach(x=>R.push([x.k+'. '+dt(x.due)+(isPaid(l,x.k)?' (paid)':''),[f(x.pay),f(x.p),f(x.i),f(x.bal)]]));R.push(['Total',[f(sum(s.map(x=>x.pay))),f(sum(s.map(x=>x.p))),f(sum(s.map(x=>x.i))),''],'t'])});
   if(!R.length)R.push(['No loans recorded',[]]);if(S.loans.length)C.push(['bar','Outstanding balance by loan',S.loans.map(l=>l.name),S.loans.map(l=>loanBal(l.id,to))])}
@@ -488,18 +570,18 @@ async function clearAll(){if(await askYes('Delete ALL entries? Partners stay. Th
 
 /* ===== Shared books (Supabase) ===== */
 const SB_URL='https://zxtqkzwyfzpkcimebtvm.supabase.co',SB_KEY='sb_publishable_XEezqRlSFWfk-DbhHLa_Zg_NuNW3Qfn',SB_LIB='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.1',SEP='\u0001';
-let sb=null,ME='',RO=false,SYNC=false,BASE={},ftmr=null,rtmr=null,flushing=false,again=false,dirty=false,pendRender=false,stat='';
+let sb=null,ME='',RO=false,SHOP=false,SYNC=false,BASE={},ftmr=null,rtmr=null,flushing=false,again=false,dirty=false,pendRender=false,stat='';
 const canon=v=>JSON.stringify(v,(k,x)=>x&&typeof x=='object'&&!Array.isArray(x)?Object.keys(x).sort().reduce((a,c)=>(a[c]=x[c],a),{}):x);
 const strip=o=>{if(!o||typeof o!='object')return o;const d={...o};delete d._by;return d};
 const nid=(()=>{let last=0;return()=>{let v=Date.now()*1000+Math.floor(Math.random()*1000);if(v<=last)v=last+1;last=v;return v}})();
-const dflt=()=>({accounts:['Bank','Cash','Mobile Money'],acctTypes:{},partners:[{id:1,name:'Partner 1',ratio:34,salary:0},{id:2,name:'Partner 2',ratio:33,salary:0},{id:3,name:'Partner 3',ratio:33,salary:0}],tx:[],loans:[],cust:{},apps:[],seq:10,appN:0,appRule:{need:0,min:0,file:1,allow:0},sav:{target:0,year:new Date().getFullYear(),account:'',salesPct:0,profitPct:0,pledges:{}}});
-function fixS(){S.loans=S.loans||[];S.cust=S.cust||{};S.acctTypes=S.acctTypes||{};S.apps=S.apps||[];S.tx=S.tx||[];S.partners=S.partners||[];S.accounts=S.accounts&&S.accounts.length?S.accounts:['Bank','Cash','Mobile Money'];S.appN=S.appN||0;S.appRule=Object.assign({need:0,min:0,file:1,allow:0},S.appRule||{});S.sav=Object.assign({target:0,year:new Date().getFullYear(),account:'',salesPct:0,profitPct:0,pledges:{}},S.sav||{});apMig()}
+const dflt=()=>({accounts:['Bank','Cash','Mobile Money'],acctTypes:{},partners:[{id:1,name:'Partner 1',ratio:34,salary:0},{id:2,name:'Partner 2',ratio:33,salary:0},{id:3,name:'Partner 3',ratio:33,salary:0}],tx:[],loans:[],cust:{},apps:[],pos:[],remit:[],prods:[],pcust:[],seq:10,appN:0,appRule:{need:0,min:0,file:1,allow:0},sav:{target:0,year:new Date().getFullYear(),account:'',salesPct:0,profitPct:0,pledges:{}}});
+function fixS(){S.pos=S.pos||[];S.remit=S.remit||[];S.prods=S.prods||[];S.pcust=S.pcust||[];S.loans=S.loans||[];S.cust=S.cust||{};S.acctTypes=S.acctTypes||{};S.apps=S.apps||[];S.tx=S.tx||[];S.partners=S.partners||[];S.accounts=S.accounts&&S.accounts.length?S.accounts:['Bank','Cash','Mobile Money'];S.appN=S.appN||0;S.appRule=Object.assign({need:0,min:0,file:1,allow:0},S.appRule||{});S.sav=Object.assign({target:0,year:new Date().getFullYear(),account:'',salesPct:0,profitPct:0,pledges:{}},S.sav||{});apMig()}
 function setStatus(t){stat=t;const e=$('#sst');if(e)e.textContent=t}
-function hdr(){$('#hd').innerHTML=`<img alt="" src="${LOGO}"><div><b>D&amp;K Liquor &amp; Whiskey</b><span>Partners’ Books${RO?' · View only':''}</span></div><div style="margin-left:auto;text-align:right;font-size:11px;opacity:.85"><span id="sst">${esc(stat)}</span></div>`}
+function hdr(){$('#hd').innerHTML=`<img alt="" src="${LOGO}"><div><b>D&amp;K Liquor &amp; Whiskey</b><span>${SHOP?'Point of sale':'Partners’ Books'}${RO?' · View only':''}</span></div><div style="margin-left:auto;text-align:right;font-size:11px;opacity:.85"><span id="sst">${esc(stat)}</span></div>`}
 function toRows(){const m={},put=(k,id,d)=>{m[k+SEP+id]={kind:k,id:String(id),data:strip(d)}};
  put('meta','main',{accounts:S.accounts,acctTypes:S.acctTypes,appRule:S.appRule,appN:S.appN,sav:S.sav});
- S.partners.forEach(p=>put('partner',p.id,p));S.tx.forEach(t=>put('tx',t.id,t));S.loans.forEach(l=>put('loan',l.id,l));Object.keys(S.cust).forEach(n=>put('cust',n,S.cust[n]));S.apps.forEach(a=>put('app',a.id,a));return m}
-function applyRow(r,del){const id=String(r.id),k=r.kind+SEP+id,L={tx:'tx',partner:'partners',loan:'loans',app:'apps'};
+ S.partners.forEach(p=>put('partner',p.id,p));S.tx.filter(t=>!t._pos).forEach(t=>put('tx',t.id,t));S.pos.forEach(x=>put('pos',x.id,x));S.remit.forEach(x=>put('remit',x.id,x));S.prods.forEach(x=>put('prod',x.id,x));S.pcust.forEach(x=>put('pcust',x.id,x));S.loans.forEach(l=>put('loan',l.id,l));Object.keys(S.cust).forEach(n=>put('cust',n,S.cust[n]));S.apps.forEach(a=>put('app',a.id,a));if(SHOP){for(const k in m)if(m[k].kind!='pos')delete m[k]}return m}
+function applyRow(r,del){const id=String(r.id),k=r.kind+SEP+id,L={tx:'tx',partner:'partners',loan:'loans',app:'apps',pos:'pos',remit:'remit',prod:'prods',pcust:'pcust'};
  if(r.kind=='meta'){if(del)return;Object.assign(S,r.data)}
  else if(r.kind=='cust'){if(del)delete S.cust[id];else S.cust[id]=r.data}
  else if(L[r.kind]){const arr=S[L[r.kind]],i=arr.findIndex(x=>String(x.id)==id);if(del){if(i>=0)arr.splice(i,1)}else{if((r.kind=='tx'||r.kind=='app')&&r.updated_by)r.data._by=r.updated_by;if(i>=0)arr[i]=r.data;else arr.push(r.data)}}
@@ -508,8 +590,8 @@ async function loadAll(){let rows=[],from=0;for(;;){const {data,error}=await sb.
 async function flush(){if(RO||!SYNC||!sb)return;if(flushing){again=true;return}flushing=true;
  try{do{again=false;const cur=toRows(),up=[],del={};
   for(const k in cur){const c=canon(cur[k].data);if(BASE[k]!==c)up.push([k,cur[k],c])}
-  for(const k in BASE){if(!cur[k]){const p=k.split(SEP);(del[p[0]]=del[p[0]]||[]).push(p[1])}}
-  for(let i=0;i<up.length;i+=100){const ch=up.slice(i,i+100),{error}=await sb.from('records').upsert(ch.map(x=>x[1]),{onConflict:'kind,id'});if(error)throw error;ch.forEach(x=>BASE[x[0]]=x[2])}
+  for(const k in BASE){if(!SHOP&&!cur[k]){const p=k.split(SEP);(del[p[0]]=del[p[0]]||[]).push(p[1])}}
+  for(let i=0;i<up.length;i+=100){const ch=up.slice(i,i+100),{error}=await sb.from('records').upsert(ch.map(x=>x[1]),{onConflict:'kind,id',ignoreDuplicates:SHOP});if(error)throw error;ch.forEach(x=>BASE[x[0]]=x[2])}
   for(const kind in del){const {error}=await sb.from('records').delete().eq('kind',kind).in('id',del[kind]);if(error)throw error;del[kind].forEach(id=>delete BASE[kind+SEP+id])}
  }while(again);dirty=false;setStatus('Saved')}
  catch(e){setStatus('Not saved, retrying…');clearTimeout(ftmr);ftmr=setTimeout(flush,6000)}
@@ -520,20 +602,20 @@ function schedRender(){clearTimeout(rtmr);rtmr=setTimeout(()=>{const a=document.
 document.addEventListener('focusout',()=>{if(pendRender)setTimeout(()=>{const a=document.activeElement;if(tab!='add'&&!(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName))&&!document.querySelector('.ov')){pendRender=false;show()}},400)});
 function onRT(p){if(RO){reloadRO();return}try{const del=p.eventType=='DELETE',r=del?p.old:p.new;if(!r||!r.kind)return;
  if(!del){const k=r.kind+SEP+r.id,c=toRows()[k];if(c&&canon(c.data)==canon(strip(r.data)))return}
- applyRow(r,del);S.partners.sort((a,b)=>a.id-b.id);fixS();schedRender()}catch(e){}}
+ applyRow(r,del);S.partners.sort((a,b)=>a.id-b.id);fixS();if(!SHOP)posRebuild();schedRender()}catch(e){}}
 async function resync(){if(!SYNC||flushing||dirty)return;if(RO){reloadRO();return}try{const rows=await loadAll(),seen=new Set();let ch=false;
  rows.forEach(r=>{const k=r.kind+SEP+r.id;seen.add(k);if(BASE[k]!==canon(strip(r.data))){applyRow(r);ch=true}});
  Object.keys(BASE).forEach(k=>{if(!seen.has(k)){const p=k.split(SEP);applyRow({kind:p[0],id:p[1]},true);ch=true}});
- if(ch){S.partners.sort((a,b)=>a.id-b.id);fixS();schedRender()}}catch(e){}}
+ if(ch){S.partners.sort((a,b)=>a.id-b.id);fixS();if(!SHOP)posRebuild();schedRender()}}catch(e){}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState=='visible')resync()});
 function subscribe(){try{sb.channel('records-live').on('postgres_changes',{event:'*',schema:'public',table:'records'},onRT).subscribe(s=>{if(s=='SUBSCRIBED')setStatus(dirty?'Saving…':'Live')})}catch(e){}}
 /* view-only: three layers (hidden controls, frozen data, blocked clicks); the database refuses writes as well */
-const OKRE=/^(tab=|openLoan=|apFilter=|rep\.|togSup\(|togCust\(|apView\(|svView\(|svDl\(|exportReports\(|refreshSaved\(|ex\(|chgPw\(|signOut\()/;
+const OKRE=/^(rcptShow\(|tab=|openLoan=|apFilter=|rep\.|togSup\(|togCust\(|apView\(|svView\(|svDl\(|exportReports\(|refreshSaved\(|ex\(|chgPw\(|signOut\()/;
 function deepFreeze(o){if(o&&typeof o=='object'&&!Object.isFrozen(o)){Object.freeze(o);Object.values(o).forEach(deepFreeze)}return o}
 function lockRO(){if(!RO)return;try{document.querySelectorAll('#app button').forEach(b=>{const oc=b.getAttribute('onclick');if(oc&&!OKRE.test(oc.trim()))b.style.display='none'});
  document.querySelectorAll('#app input,#app select,#app textarea').forEach(x=>{if(!/^rep\./.test((x.getAttribute('onchange')||'').trim()))x.disabled=true})}catch(e){}}
 let rotmr=null;
-function reloadRO(){clearTimeout(rotmr);rotmr=setTimeout(async()=>{try{const rows=await loadAll();S=dflt();S.partners=[];BASE={};rows.forEach(r=>applyRow(r));S.partners.sort((a,b)=>a.id-b.id);fixS();deepFreeze(S);schedRender()}catch(e){}},600)}
+function reloadRO(){clearTimeout(rotmr);rotmr=setTimeout(async()=>{try{const rows=await loadAll();S=dflt();S.partners=[];BASE={};rows.forEach(r=>applyRow(r));S.partners.sort((a,b)=>a.id-b.id);fixS();posRebuild();deepFreeze(S);schedRender()}catch(e){}},600)}
 /* view-only guard */
 document.addEventListener('click',e=>{if(!RO)return;const b=e.target.closest&&e.target.closest('button');if(!b||b.dataset.t)return;const oc=b.getAttribute('onclick');if(!oc)return;
  if(OKRE.test(oc.trim()))return;
@@ -549,13 +631,15 @@ async function chgPw(){const v=await askForm('Change password',[{k:'a',l:'New pa
 function bootFail(m){$('#nv').style.display='none';$('#app').innerHTML=`<div class="card"><h3>Cannot open the books</h3><p class="mut">${esc(m)}</p><button class="p" onclick="location.reload()">Try again</button></div>`}
 function noAccess(){$('#nv').style.display='none';$('#app').innerHTML=`<div class="card"><h3>No access</h3><p class="mut">${esc(ME)} is signed in but has not been set up as a partner. Ask a full partner to add you.</p><button class="p" onclick="signOut()">Sign out</button></div>`}
 async function startSession(session){ME=(session.user.email||'').toLowerCase();$('#app').innerHTML=loadingCard('Opening the books…');
- try{const {data:rl,error:e1}=await sb.from('partner_roles').select('role').eq('email',ME).maybeSingle();if(e1)throw e1;if(!rl)return noAccess();RO=rl.role=='view';hdr();
-  const rows=await loadAll();S=dflt();S.partners=[];BASE={};rows.forEach(r=>applyRow(r));S.partners.sort((a,b)=>a.id-b.id);fixS();if(RO)deepFreeze(S);
+ try{const {data:rl,error:e1}=await sb.from('partner_roles').select('role').eq('email',ME).maybeSingle();if(e1)throw e1;if(!rl)return noAccess();RO=rl.role=='view';SHOP=rl.role=='shop';hdr();
+  const rows=await loadAll();S=dflt();S.partners=[];BASE={};rows.forEach(r=>applyRow(r));S.partners.sort((a,b)=>a.id-b.id);fixS();
+  if(SHOP){SYNC=true;setStatus('Live');subscribe();buildNav();tab='pos';show();return}
+  posRebuild();if(RO)deepFreeze(S);
   if(!rows.some(r=>r.kind=='meta')){
    if(RO){$('#app').innerHTML=loadingCard('The books have not been set up yet. Ask a full partner to sign in first.');return}
    const L=LOCAL,n=L&&L.tx?L.tx.length:0;let use=false;
    if(L&&(n||(L.partners||[]).some(p=>!/^Partner \d$/.test(p.name))))use=await askYes('Found books saved on this device ('+n+' entries). Upload them to the shared database? Choose Yes only if these are your real books.');
-   S=use?Object.assign(dflt(),L):dflt();fixS();S.partners.sort((a,b)=>a.id-b.id);SYNC=true;dirty=true;await flush();
+   S=use?Object.assign(dflt(),L):dflt();fixS();posRebuild();S.partners.sort((a,b)=>a.id-b.id);SYNC=true;dirty=true;await flush();
   }
   SYNC=true;setStatus('Saved');subscribe();buildNav();tab='home';show()}
  catch(e){bootFail('Could not load the books: '+((e&&e.message)||e))}}
